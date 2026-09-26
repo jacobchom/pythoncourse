@@ -12,8 +12,8 @@
 # gaps are, so the exact numbers are a guess. Change them to tune the game.
 
 FIGHTERS = {
-    "Ralph": {"height": 62, "weight": 60, "strength": 5, "skill": 4, "fight_iq": 6, "special": "clinch"},
-    "Zhen": {"height": 63, "weight": 52, "strength": 4, "skill": 5, "fight_iq": 4, "special": "fast_kicks"},
+    "Ralph": {"height": 62, "weight": 60, "strength": 5, "skill": 4, "fight_iq": 6, "special": "judo"},
+    "Zhen": {"height": 63, "weight": 52, "strength": 4, "skill": 5, "fight_iq": 4, "special": "taekwondo"},
     # Akira was missing from the strength order - 6 is a placeholder guess.
     "Akira": {"height": 67, "weight": 62, "strength": 6, "skill": 7, "fight_iq": 8, "special": "right_cross"},
     # Jed doesn't have a special ability yet.
@@ -25,8 +25,8 @@ FIGHTERS = {
 SPECIALS = {
     "long_reach": "Long reach - long strikes land more, hard to get close to",
     "power_kicks": "Really strong kicks - kicks and teeps hit much harder",
-    "clinch": "Clinch master - easy to grab, brutal knees/elbows inside",
+    "judo": "Judo - clinch master + UNBLOCKABLE judo sweep (own move)",
     "right_cross": "Really strong right cross - hits harder, drops people",
-    "fast_kicks": "Really fast kicks - land first, can double up, bit softer",
+    "taekwondo": "Taekwondo - fast double kicks + spinning head kick (own move)",
     None: "None yet",
 }

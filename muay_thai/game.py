@@ -42,15 +42,20 @@ MOVES = {
     "break": {"name": "Break the clinch", "damage": 0, "stamina": 5, "accuracy": 0, "speed": 2,
               "tip": "shove them off, back to range"},
     "block": {"name": "Block", "damage": 0, "stamina": 0, "accuracy": 0, "speed": 4,
-              "tip": "take 70% less damage, get stamina back"},
+              "tip": "take 70% less damage, get stamina back, brace against sweeps"},
+    # signature moves - only fighters with the matching special get these
+    "spin_kick": {"name": "Spinning head kick", "damage": 18, "stamina": 16, "accuracy": 58, "speed": 2,
+                  "tip": "TAEKWONDO - can drop anyone, but a miss leaves you wide open"},
+    "judo_sweep": {"name": "Judo sweep", "damage": 10, "stamina": 12, "accuracy": 0, "speed": 2,
+                   "tip": "JUDO - can't be blocked, dumps them before they can hit you"},
 }
 
-OUTSIDE_MOVES = ["jab", "cross", "teep", "kick", "elbow", "knee", "clinch", "block"]
-CLINCH_MOVES = ["knee", "elbow", "sweep", "break", "block"]
-LONG_MOVES = ["jab", "cross", "teep", "kick"]
+OUTSIDE_MOVES = ["jab", "cross", "teep", "kick", "elbow", "knee", "clinch"]
+CLINCH_MOVES = ["knee", "elbow", "sweep", "break"]
+LONG_MOVES = ["jab", "cross", "teep", "kick", "spin_kick"]
 
 # Muay Thai judges score kicks and knees higher than punches
-SCORING_BONUS = {"kick": 1.3, "knee": 1.3}
+SCORING_BONUS = {"kick": 1.3, "knee": 1.3, "spin_kick": 1.3}
 
 
 # ---------- fighters ----------
@@ -82,13 +87,13 @@ def format_height(inches):
 
 def stamina_cost(fighter, move):
     cost = MOVES[move]["stamina"]
-    if move == "kick" and fighter["special"] == "fast_kicks":
+    if move == "kick" and fighter["special"] == "taekwondo":
         cost = round(cost * 0.6)
     return cost
 
 
 def move_speed(fighter, move):
-    if move == "kick" and fighter["special"] == "fast_kicks":
+    if move == "kick" and fighter["special"] == "taekwondo":
         return 3
     return MOVES[move]["speed"]
 
@@ -103,7 +108,8 @@ def new_fight(fighter1, fighter2, quiet=False):
         "winner": None,
         "method": None,
         "pushed": None,  # fighter pushed back by a teep this exchange
-        "dropped": None,  # fighter knocked down this exchange
+        "dropped": None,  # fighter knocked down or swept this exchange
+        "off_balance": None,  # fighter who just missed a spinning kick
     }
 
 
@@ -112,10 +118,20 @@ def say(fight, text):
         print(text)
 
 
-def available_moves(fight):
+def available_moves(fight, fighter):
     if fight["position"] == "clinch":
-        return CLINCH_MOVES
-    return OUTSIDE_MOVES
+        moves = list(CLINCH_MOVES)
+    else:
+        moves = list(OUTSIDE_MOVES)
+    if fighter["special"] == "judo":
+        # the judo sweep works from anywhere and replaces the normal sweep
+        if "sweep" in moves:
+            moves.remove("sweep")
+        moves.append("judo_sweep")
+    if fighter["special"] == "taekwondo" and fight["position"] == "outside":
+        moves.append("spin_kick")
+    moves.append("block")
+    return moves
 
 
 def hit_chance(fight, att, dfn, move):
@@ -124,20 +140,25 @@ def hit_chance(fight, att, dfn, move):
     if fight["position"] == "clinch":
         # inside it's more about grip and position than slick technique
         chance += (att["skill"] - dfn["skill"]) * 1.5
-        if att["special"] == "clinch":
+        if att["special"] == "judo":
             chance += 15
     else:
         chance += (att["skill"] - dfn["skill"]) * 3
         if move in LONG_MOVES:
             reach_edge = reach(att) - reach(dfn)
+            if att["special"] == "taekwondo" and move in ["kick", "spin_kick"]:
+                # taekwondo is built on kicking from long range
+                reach_edge = max(0, reach_edge)
             chance += max(-10, min(10, reach_edge))
         else:
             # knees and elbows from range mean stepping in first
             chance -= 15
             if dfn["special"] == "long_reach":
                 chance -= 10
-    if move == "kick" and att["special"] == "fast_kicks":
+    if move == "kick" and att["special"] == "taekwondo":
         chance += 15
+    if fight["off_balance"] is dfn:
+        chance += 20
     if att["stamina"] < 30:
         chance -= (30 - att["stamina"]) // 2
     return max(5, min(95, round(chance)))
@@ -150,13 +171,13 @@ def damage(att, move, in_clinch, crit, blocked):
     special = att["special"]
     if special == "power_kicks" and move in ["kick", "teep"]:
         dmg *= 1.4
-    if special == "fast_kicks" and move == "kick":
+    if special == "taekwondo" and move == "kick":
         dmg *= 0.85
     if special == "right_cross" and move == "cross":
         dmg *= 1.6
     if in_clinch and move in ["knee", "elbow"]:
         dmg *= 1.2
-        if special == "clinch":
+        if special == "judo":
             dmg *= 1.3
     dmg *= random.uniform(0.85, 1.15)
     if crit:
@@ -175,11 +196,26 @@ def knockdown(fight, att, dfn):
     say(fight, f"*** {dfn['name'].upper()} GOES DOWN! *** (knockdown {dfn['knockdowns']} of {KNOCKDOWNS_FOR_TKO})")
 
 
+def knockdown_chance(att, move, crit):
+    if move == "spin_kick":
+        # a spinning kick to the head can end it even if it isn't perfect
+        return 80 if crit else 40
+    if not crit:
+        return 0
+    if move == "cross" and att["special"] == "right_cross":
+        return 60
+    return 30
+
+
 def strike(fight, att, dfn, move, dfn_move):
     label = MOVES[move]["name"].lower()
     in_clinch = fight["position"] == "clinch"
     if random.randint(1, 100) > hit_chance(fight, att, dfn, move):
-        say(fight, f"{att['name']}'s {label} misses.")
+        if move == "spin_kick":
+            fight["off_balance"] = att
+            say(fight, f"{att['name']} spins... and misses! {att['name']} is off balance and wide open.")
+        else:
+            say(fight, f"{att['name']}'s {label} misses.")
         return
 
     blocked = dfn_move == "block"
@@ -192,7 +228,7 @@ def strike(fight, att, dfn, move, dfn_move):
 
     if blocked:
         say(fight, f"{dfn['name']} blocks {att['name']}'s {label}, still takes {dmg}.")
-        if move == "kick" and att["special"] != "fast_kicks":
+        if move == "kick" and att["special"] != "taekwondo":
             att["hp"] -= 3
             say(fight, f"Checked! {att['name']} kicks a shin and takes 3 back.")
         if random.randint(1, 100) <= dfn["fight_iq"] * 4:
@@ -202,15 +238,13 @@ def strike(fight, att, dfn, move, dfn_move):
             say(fight, f"{dfn['name']} reads it and counters for {counter}.")
     elif crit:
         say(fight, f"CLEAN SHOT! {att['name']}'s {label} lands for {dmg}!")
-        knockdown_chance = 30
-        if move == "cross" and att["special"] == "right_cross":
-            knockdown_chance = 60
-        if dfn["hp"] > 0 and random.randint(1, 100) <= knockdown_chance:
-            knockdown(fight, att, dfn)
     else:
         say(fight, f"{att['name']}'s {label} lands for {dmg}.")
 
-    double_kick = move == "kick" and att["special"] == "fast_kicks" and random.randint(1, 100) <= 35
+    if not blocked and dfn["hp"] > 0 and random.randint(1, 100) <= knockdown_chance(att, move, crit):
+        knockdown(fight, att, dfn)
+
+    double_kick = move == "kick" and att["special"] == "taekwondo" and random.randint(1, 100) <= 35
     if double_kick and dfn["hp"] > 0 and fight["dropped"] is not dfn:
         second = damage(att, "kick", in_clinch, False, blocked)
         dfn["hp"] -= second
@@ -226,7 +260,7 @@ def attempt_clinch(fight, att, dfn, dfn_move):
         say(fight, f"{att['name']} gets teeped away before they can grab.")
         return
     chance = 55 + (att["strength"] - dfn["strength"]) * 4 + (att["skill"] - dfn["skill"]) * 2
-    if att["special"] == "clinch":
+    if att["special"] == "judo":
         chance += 20
     if dfn["special"] == "long_reach":
         chance -= 10
@@ -241,7 +275,7 @@ def attempt_clinch(fight, att, dfn, dfn_move):
 
 def attempt_break(fight, att, dfn):
     chance = 60 + (att["strength"] - dfn["strength"]) * 5 + (att["skill"] - dfn["skill"]) * 2
-    if dfn["special"] == "clinch":
+    if dfn["special"] == "judo":
         chance -= 30
     if random.randint(1, 100) <= max(10, min(90, chance)):
         fight["position"] = "outside"
@@ -250,11 +284,11 @@ def attempt_break(fight, att, dfn):
         say(fight, f"{att['name']} can't break {dfn['name']}'s grip.")
 
 
-def attempt_sweep(fight, att, dfn):
+def attempt_sweep(fight, att, dfn, dfn_move):
     chance = 40 + (att["strength"] - dfn["strength"]) * 4 + (att["skill"] - dfn["skill"]) * 3
     chance += (att["weight"] - dfn["weight"]) * 0.5
-    if att["special"] == "clinch":
-        chance += 20
+    if dfn_move == "block":
+        chance -= 20  # braced stance
     if random.randint(1, 100) <= max(5, min(90, chance)):
         dfn["hp"] -= MOVES["sweep"]["damage"]
         dfn["stamina"] = max(0, dfn["stamina"] - 15)
@@ -265,6 +299,33 @@ def attempt_sweep(fight, att, dfn):
         say(fight, f"{dfn['name']} keeps their balance.")
 
 
+def attempt_judo_sweep(fight, att, dfn, dfn_move):
+    # unblockable - blocking does nothing against it. Judo is its own
+    # skill, so Muay Thai skill doesn't matter here - strength and weight do.
+    chance = 55 + (att["strength"] - dfn["strength"]) * 3
+    chance += (att["weight"] - dfn["weight"]) * 0.2
+    if fight["position"] == "clinch":
+        chance += 15
+    elif dfn["special"] == "long_reach":
+        chance -= 10
+    if dfn_move in ["kick", "spin_kick", "teep"]:
+        chance += 20  # caught them standing on one leg
+    if fight["off_balance"] is dfn:
+        chance += 20
+    if random.randint(1, 100) <= max(15, min(85, chance)):
+        dmg = damage(att, "judo_sweep", False, False, False)
+        dfn["hp"] -= dmg
+        dfn["stamina"] = max(0, dfn["stamina"] - 20)
+        att["points"] += 12
+        fight["position"] = "outside"
+        fight["dropped"] = dfn
+        say(fight, f"JUDO! {att['name']} whips {dfn['name']}'s legs away - slammed down for {dmg}!")
+        if dfn["hp"] > 0 and random.randint(1, 100) <= 30:
+            knockdown(fight, att, dfn)
+    else:
+        say(fight, f"{dfn['name']} steps over {att['name']}'s judo sweep.")
+
+
 def do_move(fight, att, move, dfn, dfn_move):
     att["stamina"] = max(0, att["stamina"] - stamina_cost(att, move))
     label = MOVES[move]["name"].lower()
@@ -272,14 +333,16 @@ def do_move(fight, att, move, dfn, dfn_move):
         return
     if move == "clinch":
         attempt_clinch(fight, att, dfn, dfn_move)
-    elif move not in available_moves(fight):
+    elif move not in available_moves(fight, att):
         say(fight, f"{att['name']}'s {label} comes to nothing - the position changed.")
-    elif fight["pushed"] is att and move in ["knee", "elbow"]:
+    elif fight["pushed"] is att and move in ["knee", "elbow", "judo_sweep"]:
         say(fight, f"{att['name']} gets teeped away and can't land the {label}.")
     elif move == "break":
         attempt_break(fight, att, dfn)
     elif move == "sweep":
-        attempt_sweep(fight, att, dfn)
+        attempt_sweep(fight, att, dfn, dfn_move)
+    elif move == "judo_sweep":
+        attempt_judo_sweep(fight, att, dfn, dfn_move)
     else:
         strike(fight, att, dfn, move, dfn_move)
 
@@ -287,6 +350,7 @@ def do_move(fight, att, move, dfn, dfn_move):
 def exchange(fight, moves):
     fight["pushed"] = None
     fight["dropped"] = None
+    fight["off_balance"] = None
     f1, f2 = fight["fighters"]
     turns = [(f1, moves[0], f2, moves[1]), (f2, moves[1], f1, moves[0])]
 
@@ -346,8 +410,13 @@ def score_round(fight, round_num):
 
 # ---------- choosing moves ----------
 
+def bump(weights, move, amount):
+    if move in weights:
+        weights[move] += amount
+
+
 def cpu_choose(fight, me, opp):
-    options = available_moves(fight)
+    options = available_moves(fight, me)
 
     # low fight IQ = more wild, random choices
     if random.randint(1, 100) <= (10 - me["fight_iq"]) * 7:
@@ -355,53 +424,64 @@ def cpu_choose(fight, me, opp):
 
     weights = {move: 1 for move in options}
     recent = opp["history"][-3:]
+    kicks = recent.count("kick") + recent.count("spin_kick")
 
     if me["stamina"] < 20:
-        weights["block"] += 6
+        bump(weights, "block", 6)
 
     if fight["position"] == "outside":
         reach_gap = reach(me) - reach(opp)
         if reach_gap >= 3:
-            weights["jab"] += 3
-            weights["teep"] += 2
-            weights["kick"] += 2
+            bump(weights, "jab", 3)
+            bump(weights, "teep", 2)
+            bump(weights, "kick", 2)
         elif reach_gap <= -3:
-            weights["clinch"] += 3
-            weights["knee"] += 1
-        if me["special"] in ["power_kicks", "fast_kicks"]:
-            weights["kick"] += 4
+            bump(weights, "clinch", 3)
+            bump(weights, "knee", 1)
+        if me["special"] in ["power_kicks", "taekwondo"]:
+            bump(weights, "kick", 4)
+        if me["special"] == "taekwondo" and me["stamina"] >= 30:
+            bump(weights, "spin_kick", 4)
+            if opp["hp"] < opp["max_hp"] * 0.4:
+                bump(weights, "spin_kick", 3)
         if me["special"] == "right_cross":
-            weights["cross"] += 4
-        if me["special"] == "clinch":
-            weights["clinch"] += 4
+            bump(weights, "cross", 4)
+        if me["special"] == "judo":
+            bump(weights, "clinch", 4)
+            bump(weights, "judo_sweep", 3)
         if me["special"] == "long_reach":
-            weights["jab"] += 2
-            weights["teep"] += 2
-        if recent.count("kick") >= 2:
-            weights["block"] += 3
-            weights["clinch"] += 2
+            bump(weights, "jab", 2)
+            bump(weights, "teep", 2)
+        if kicks >= 1:
+            bump(weights, "judo_sweep", 3)
+        if kicks >= 2:
+            bump(weights, "block", 3)
+            bump(weights, "clinch", 2)
         if recent.count("clinch") + recent.count("knee") + recent.count("elbow") >= 2:
-            weights["teep"] += 4
+            bump(weights, "teep", 4)
         if recent.count("block") >= 2:
-            weights["clinch"] += 3
+            bump(weights, "clinch", 3)
+            bump(weights, "judo_sweep", 3)
         if opp["hp"] < opp["max_hp"] * 0.25:
-            weights["kick"] += 2
-            weights["cross"] += 2
+            bump(weights, "kick", 2)
+            bump(weights, "cross", 2)
     else:
         clinch_edge = me["strength"] - opp["strength"] + (me["weight"] - opp["weight"]) / 5
-        if me["special"] == "clinch":
+        if me["special"] == "judo":
             clinch_edge += 5
-        if opp["special"] == "clinch":
+        if opp["special"] == "judo":
             clinch_edge -= 5
         if clinch_edge >= 0:
-            weights["knee"] += 4
-            weights["elbow"] += 2
-            weights["sweep"] += 2
+            bump(weights, "knee", 4)
+            bump(weights, "elbow", 2)
+            bump(weights, "sweep", 2)
+            bump(weights, "judo_sweep", 3)
         else:
-            weights["break"] += 4
-            weights["elbow"] += 1
+            bump(weights, "break", 4)
+            bump(weights, "elbow", 1)
         if recent.count("block") >= 2:
-            weights["sweep"] += 3
+            bump(weights, "sweep", 3)
+            bump(weights, "judo_sweep", 4)
 
     moves = list(weights)
     return random.choices(moves, weights=[weights[m] for m in moves])[0]
@@ -419,10 +499,10 @@ def human_choose(fight, me, opp, opp_move):
     # high fight IQ = sometimes you see what the CPU is about to do
     if opp_move is not None and random.randint(1, 100) <= (me["fight_iq"] - 2) * 7:
         print(f"  [Fight IQ] You read {opp['name']} - they're going for a {MOVES[opp_move]['name'].lower()}!")
-    options = available_moves(fight)
+    options = available_moves(fight, me)
     print(f"{me['name']}, pick your move:")
     for number, move in enumerate(options, start=1):
-        print(f"  {number}) {MOVES[move]['name']:<17} (stamina {stamina_cost(me, move):>2})  {MOVES[move]['tip']}")
+        print(f"  {number}) {MOVES[move]['name']:<19} (stamina {stamina_cost(me, move):>2})  {MOVES[move]['tip']}")
     return options[ask_number("> ", 1, len(options)) - 1]
 
 
