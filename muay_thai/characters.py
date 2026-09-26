@@ -14,10 +14,9 @@
 FIGHTERS = {
     "Ralph": {"height": 62, "weight": 60, "strength": 5, "skill": 4, "fight_iq": 6, "special": "judo"},
     "Zhen": {"height": 63, "weight": 52, "strength": 4, "skill": 5, "fight_iq": 4, "special": "taekwondo"},
-    # Akira was missing from the strength order - 6 is a placeholder guess.
-    "Akira": {"height": 67, "weight": 62, "strength": 6, "skill": 7, "fight_iq": 8, "special": "right_cross"},
-    # Jed doesn't have a special ability yet.
-    "Jed": {"height": 68, "weight": 60, "strength": 6, "skill": 8, "fight_iq": 9, "special": None},
+    # Akira is stronger than Jed but weaker than Jacob
+    "Akira": {"height": 67, "weight": 62, "strength": 6.5, "skill": 7, "fight_iq": 8, "special": "right_cross"},
+    "Jed": {"height": 68, "weight": 60, "strength": 6, "skill": 8, "fight_iq": 9, "special": "counters"},
     "Tim": {"height": 69.5, "weight": 85, "strength": 9, "skill": 6, "fight_iq": 5, "special": "power_kicks"},
     "Jacob": {"height": 70.5, "weight": 55, "strength": 7, "skill": 9, "fight_iq": 7, "special": "long_reach"},
 }
@@ -28,5 +27,6 @@ SPECIALS = {
     "judo": "Judo - clinch master + UNBLOCKABLE judo sweep (own move)",
     "right_cross": "Really strong right cross - hits harder, drops people",
     "taekwondo": "Taekwondo - fast double kicks + spinning head kick (own move)",
+    "counters": "Counter-striker - own move: slip their strike, fire back hard",
     None: "None yet",
 }

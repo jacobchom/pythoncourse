@@ -20,6 +20,7 @@ ROUNDS = 3
 EXCHANGES_PER_ROUND = 8
 MAX_STAMINA = 100
 KNOCKDOWNS_FOR_TKO = 3
+REPEAT_PENALTY = 10  # accuracy lost for each time in a row you use the same move
 
 # damage, stamina cost, base accuracy (%), speed (higher goes first)
 MOVES = {
@@ -46,6 +47,8 @@ MOVES = {
     # signature moves - only fighters with the matching special get these
     "spin_kick": {"name": "Spinning head kick", "damage": 18, "stamina": 16, "accuracy": 58, "speed": 2,
                   "tip": "TAEKWONDO - can drop anyone, but a miss leaves you wide open"},
+    "counter": {"name": "Counter", "damage": 10, "stamina": 4, "accuracy": 0, "speed": 4,
+                "tip": "COUNTER - if they strike, slip it and fire back hard"},
     "judo_sweep": {"name": "Judo sweep", "damage": 10, "stamina": 12, "accuracy": 0, "speed": 2,
                    "tip": "JUDO - can't be blocked, dumps them before they can hit you"},
 }
@@ -130,12 +133,25 @@ def available_moves(fight, fighter):
         moves.append("judo_sweep")
     if fighter["special"] == "taekwondo" and fight["position"] == "outside":
         moves.append("spin_kick")
+    if fighter["special"] == "counters" and fight["position"] == "outside":
+        moves.append("counter")
     moves.append("block")
     return moves
 
 
+def predictable(fighter, move):
+    """How many times in a row the fighter has just used this move.
+    Repeat yourself and the other fighter starts reading you."""
+    streak = 0
+    for past_move in reversed(fighter["history"]):
+        if past_move != move:
+            break
+        streak += 1
+    return streak * REPEAT_PENALTY
+
+
 def hit_chance(fight, att, dfn, move):
-    chance = MOVES[move]["accuracy"]
+    chance = MOVES[move]["accuracy"] - predictable(att, move)
     chance -= (dfn["fight_iq"] - 5) * 2
     if fight["position"] == "clinch":
         # inside it's more about grip and position than slick technique
@@ -202,14 +218,41 @@ def knockdown_chance(att, move, crit):
         return 80 if crit else 40
     if not crit:
         return 0
+    if move == "counter":
+        return 45  # they never see it coming
     if move == "cross" and att["special"] == "right_cross":
         return 60
     return 30
 
 
+def try_counter(fight, att, dfn, move):
+    """dfn is waiting to counter att's strike. Returns True if they slipped it."""
+    chance = 45 + (dfn["fight_iq"] - 5) * 5 + (dfn["skill"] - att["skill"]) * 3
+    if move == "jab":
+        chance -= 15  # too quick to time
+    if move in ["kick", "spin_kick"]:
+        chance += 10  # big, slow shots are easy to read
+    chance -= predictable(dfn, "counter")
+    if random.randint(1, 100) > max(10, min(85, chance)):
+        say(fight, f"{dfn['name']} waits for a counter but reads it wrong...")
+        return False
+
+    crit = random.randint(1, 100) <= dfn["skill"] * 4
+    dmg = damage(dfn, "counter", False, crit, False)
+    att["hp"] -= dmg
+    dfn["points"] += dmg
+    label = MOVES[move]["name"].lower()
+    say(fight, f"COUNTER! {dfn['name']} slips the {label} and fires back for {dmg}!")
+    if att["hp"] > 0 and random.randint(1, 100) <= knockdown_chance(dfn, "counter", crit):
+        knockdown(fight, dfn, att)
+    return True
+
+
 def strike(fight, att, dfn, move, dfn_move):
     label = MOVES[move]["name"].lower()
     in_clinch = fight["position"] == "clinch"
+    if dfn_move == "counter" and not in_clinch and try_counter(fight, att, dfn, move):
+        return
     if random.randint(1, 100) > hit_chance(fight, att, dfn, move):
         if move == "spin_kick":
             fight["off_balance"] = att
@@ -221,6 +264,8 @@ def strike(fight, att, dfn, move, dfn_move):
     blocked = dfn_move == "block"
     crit = not blocked and random.randint(1, 100) <= att["skill"] * 2
     dmg = damage(att, move, in_clinch, crit, blocked)
+    if dfn_move == "counter" and not in_clinch:
+        dmg = round(dmg * 1.3)  # caught flat-footed waiting for a counter
     dfn["hp"] -= dmg
     att["points"] += dmg * SCORING_BONUS.get(move, 1)
     if move == "teep":
@@ -260,11 +305,12 @@ def attempt_clinch(fight, att, dfn, dfn_move):
         say(fight, f"{att['name']} gets teeped away before they can grab.")
         return
     chance = 55 + (att["strength"] - dfn["strength"]) * 4 + (att["skill"] - dfn["skill"]) * 2
+    chance -= predictable(att, "clinch")
     if att["special"] == "judo":
         chance += 20
     if dfn["special"] == "long_reach":
         chance -= 10
-    if dfn_move == "block":
+    if dfn_move in ["block", "counter"]:
         chance += 10
     if random.randint(1, 100) <= max(10, min(90, chance)):
         fight["position"] = "clinch"
@@ -286,6 +332,7 @@ def attempt_break(fight, att, dfn):
 
 def attempt_sweep(fight, att, dfn, dfn_move):
     chance = 40 + (att["strength"] - dfn["strength"]) * 4 + (att["skill"] - dfn["skill"]) * 3
+    chance -= predictable(att, "sweep")
     chance += (att["weight"] - dfn["weight"]) * 0.5
     if dfn_move == "block":
         chance -= 20  # braced stance
@@ -303,6 +350,7 @@ def attempt_judo_sweep(fight, att, dfn, dfn_move):
     # unblockable - blocking does nothing against it. Judo is its own
     # skill, so Muay Thai skill doesn't matter here - strength and weight do.
     chance = 55 + (att["strength"] - dfn["strength"]) * 3
+    chance -= predictable(att, "judo_sweep")
     chance += (att["weight"] - dfn["weight"]) * 0.2
     if fight["position"] == "clinch":
         chance += 15
@@ -329,8 +377,8 @@ def attempt_judo_sweep(fight, att, dfn, dfn_move):
 def do_move(fight, att, move, dfn, dfn_move):
     att["stamina"] = max(0, att["stamina"] - stamina_cost(att, move))
     label = MOVES[move]["name"].lower()
-    if move == "block":
-        return
+    if move in ["block", "counter"]:
+        return  # these just wait for the other fighter's move
     if move == "clinch":
         attempt_clinch(fight, att, dfn, dfn_move)
     elif move not in available_moves(fight, att):
@@ -452,6 +500,11 @@ def cpu_choose(fight, me, opp):
         if me["special"] == "long_reach":
             bump(weights, "jab", 2)
             bump(weights, "teep", 2)
+        if me["special"] == "counters":
+            bump(weights, "counter", 2)
+            strikes = sum(recent.count(m) for m in ["cross", "kick", "spin_kick", "teep", "elbow", "knee"])
+            if strikes >= 2:
+                bump(weights, "counter", 3)
         if kicks >= 1:
             bump(weights, "judo_sweep", 3)
         if kicks >= 2:
@@ -462,6 +515,11 @@ def cpu_choose(fight, me, opp):
         if recent.count("block") >= 2:
             bump(weights, "clinch", 3)
             bump(weights, "judo_sweep", 3)
+        if recent.count("counter") >= 2:
+            # don't feed a counter-puncher - grab them, sweep them, or jab
+            bump(weights, "clinch", 6)
+            bump(weights, "judo_sweep", 6)
+            bump(weights, "jab", 4)
         if opp["hp"] < opp["max_hp"] * 0.25:
             bump(weights, "kick", 2)
             bump(weights, "cross", 2)
