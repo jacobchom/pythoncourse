@@ -172,3 +172,4 @@ cython_debug/
 
 # personal data saved by second_me.py
 me.json
+another_me/
