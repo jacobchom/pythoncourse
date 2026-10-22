@@ -322,6 +322,27 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(self.rows(prof, "Lifetime CS2")["K/D"], "1.45")
         self.assertEqual(self.rows(prof, "FACEIT rank")["Elo"], 3500)
 
+    def test_apex(self):
+        data = {"global": {"name": "ImperialHal", "level": 500,
+                           "rank": {"rankName": "Predator", "rankDiv": 0, "rankScore": 30000}},
+                "total": {"kills": {"name": "BR Kills", "value": 50000}, "damage": {"name": "Damage", "value": -1}},
+                "legends": {"selected": {"LegendName": "Bangalore",
+                                         "data": [{"name": "BR Kills", "value": 9000, "key": "kills"}]}}}
+
+        def fake(url, params=None, cache_seconds=None, headers=None):
+            self.assertTrue(params.get("auth"))
+            return data if params["player"] == "ImperialHal" else {"Error": "Player not found"}
+        with mock.patch.dict(os.environ, {"APEX_API_KEY": "k"}), \
+                mock.patch.object(providers, "get_json", side_effect=fake):
+            p = providers.ApexProvider()
+            self.assertEqual(p.search("nobody"), [])
+            [hit] = p.search("ImperialHal")
+            prof = p.details(hit["id"])
+            self.assertIsNone(p.details("XBOX360/ImperialHal"))
+        self.assertEqual(self.rows(prof, "Account")["Ranked"], "Predator")
+        self.assertEqual(self.rows(prof, "Tracked totals"), {"BR Kills": 50000})  # -1 = not tracked
+        self.assertEqual(self.rows(prof, "Selected legend: Bangalore"), {"BR Kills": 9000})
+
     def test_riot_disabled_without_key(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertFalse(providers.RiotProvider().enabled())

@@ -882,6 +882,63 @@ class FaceitProvider(Provider):
 
 
 # --------------------------------------------------------------------------
+# Apex Legends - mozambiquehe.re (free key: set APEX_API_KEY)
+# Field names written from memory of the API docs; not verified offline.
+# --------------------------------------------------------------------------
+class ApexProvider(Provider):
+    key = "apex"
+    label = "Apex Legends Status"
+    category = "Apex Legends"
+    PLATFORMS = ("PC", "PS4", "X1", "SWITCH")
+
+    def enabled(self):
+        return bool(os.environ.get("APEX_API_KEY"))
+
+    def lookup(self, name, platform):
+        data = get_json("https://api.mozambiquehe.re/bridge",
+                        {"auth": os.environ.get("APEX_API_KEY", ""), "player": name, "platform": platform})
+        # This API reports "player not found" as a 200 with an "Error" key.
+        if not data or "Error" in data or not (data.get("global") or {}).get("name"):
+            return None
+        return data
+
+    def search(self, query):
+        name = query.strip()
+        data = self.lookup(name, "PC")
+        if not data:
+            return []
+        g = data["global"]
+        rank = (g.get("rank") or {}).get("rankName")
+        sub = " · ".join(filter(None, [f"Level {g.get('level')}" if g.get("level") else "", rank, "PC"]))
+        return [self.result(f"PC/{g['name']}", g["name"], sub, (g.get("rank") or {}).get("rankImg"))]
+
+    def details(self, player_id):
+        platform, name = player_id.split("/", 1)
+        if platform not in self.PLATFORMS:
+            return None
+        data = self.lookup(name, platform)
+        if not data:
+            return None
+        g = data["global"]
+        rank = g.get("rank") or {}
+        sections = [section("Account", [[k, v] for k, v in [
+            ("Level", g.get("level")), ("Platform", platform),
+            ("Ranked", " ".join(filter(None, [rank.get("rankName"), str(rank.get("rankDiv") or "")])).strip()),
+            ("Ranked points", rank.get("rankScore")),
+        ] if v not in (None, "")])]
+        totals = [[stat.get("name", key), stat.get("value")] for key, stat in (data.get("total") or {}).items()
+                  if isinstance(stat, dict) and stat.get("value") not in (None, -1)]
+        sections.append(section("Tracked totals", totals))
+        selected = (data.get("legends") or {}).get("selected") or {}
+        legend_rows = [[d.get("name", d.get("key")), d.get("value")] for d in selected.get("data") or []]
+        if selected.get("LegendName"):
+            sections.append(section(f"Selected legend: {selected['LegendName']}", legend_rows))
+        return profile(g["name"], self.category, rank.get("rankImg"), sections,
+                       [["apexlegendsstatus.com", f"https://apexlegendsstatus.com/profile/{platform}/{urllib.parse.quote(name)}"]],
+                       "Apex only reports stats for the banner trackers a player has equipped.")
+
+
+# --------------------------------------------------------------------------
 # Everyone else (tennis, F1, boxing, cricket, CS, LoL pros...) - Wikipedia.
 # Most athlete pages have an "infobox" with career numbers; we read those.
 # --------------------------------------------------------------------------
@@ -1068,7 +1125,7 @@ class WikipediaProvider(Provider):
 
 
 PROVIDERS = [MLBProvider(), NHLProvider(), ESPNProvider(), OpenDotaProvider(), OverwatchProvider(),
-             RiotProvider(), ValorantProvider(), FortniteProvider(), FaceitProvider(),
+             RiotProvider(), ValorantProvider(), FortniteProvider(), FaceitProvider(), ApexProvider(),
              ChessComProvider(), LichessProvider(), WikipediaProvider(), SportsDBProvider()]
 BY_KEY = {p.key: p for p in PROVIDERS}
 

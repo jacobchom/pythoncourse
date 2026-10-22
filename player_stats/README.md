@@ -34,6 +34,7 @@ Off until you add a free key (each switches itself on when its variable is set):
 | HenrikDev | Valorant | `HENRIK_API_KEY` | api.henrikdev.xyz/dashboard | `Name#TAG` |
 | Fortnite-API | Fortnite | `FORTNITE_API_KEY` | dash.fortnite-api.com | exact Epic name |
 | FACEIT | Counter-Strike 2 | `FACEIT_API_KEY` | developers.faceit.com | FACEIT nickname |
+| Apex Legends Status | Apex Legends (PC) | `APEX_API_KEY` | portal.apexlegendsapi.com | exact Origin/EA name |
 
 ```
 export FACEIT_API_KEY=...   # etc.
@@ -45,16 +46,27 @@ python app.py
 The code was built in a sandbox with no access to these APIs, and all tests use
 fake responses. Field names for **OverFast** were checked against its source code
 on GitHub, and **ESPN** against a community reference (which led to fallbacks
-for both the flat and split stat layouts). **Fortnite, Valorant, FACEIT, Riot,
+for both the flat and split stat layouts). **Fortnite, Valorant, FACEIT, Apex, Riot,
 MLB, NHL, OpenDota, Chess.com, Lichess, TheSportsDB and Wikipedia** were written
 from knowledge of their docs and have *not* been checked against a live
 response. If a source shows as "unavailable" or empty, that's the first place
 to look.
 
-**Still not covered:** Rocket League, Apex, Call of Duty, amateur players in
+**Still not covered:** Rocket League and Call of Duty (no public stats API I know of), amateur players in
 most traditional sports, and anyone without a Wikipedia page. To add a source,
 write a new `Provider` subclass in `providers.py` with `search()` and
 `details()` (and `enabled()` if it needs a key), then add it to `PROVIDERS`.
+
+## Checking the sources against the real APIs
+
+```
+python check_sources.py          # every enabled source
+python check_sources.py espn ow  # just some
+```
+
+It searches each source for a well-known player, opens the result, and prints
+`OK`, `WARN` (found, but no stat rows) or `FAIL` with the reason. Run it after
+setting up, and whenever a source looks broken.
 
 ## How it works
 
