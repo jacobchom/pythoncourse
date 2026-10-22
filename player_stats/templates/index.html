@@ -11,7 +11,7 @@
     <h1>Player Stats Search</h1>
     <p class="tagline">Search players in sports and esports and see their stats.</p>
     <form id="search-form" autocomplete="off">
-      <input id="q" name="q" type="search" placeholder="Try: Aaron Judge, McDavid, Miracle, Hikaru, Messi…" autofocus>
+      <input id="q" name="q" type="search" placeholder="Try: LeBron James, Messi, McDavid, Miracle, Hikaru, Faker, Name#TAG…" autofocus>
       <button type="submit">Search</button>
     </form>
     <p class="sources">Sources:
@@ -28,8 +28,9 @@
 
   <footer>
     <p>Chess.com needs an <em>exact</em> username. Dota 2 search covers pro players only.
-       NBA, NFL, football (soccer), League of Legends and Valorant don't have free, key-less stats APIs,
-       so those players come back as profiles from TheSportsDB or Wikipedia.</p>
+       League of Legends accounts need a Riot ID like <code>Faker#KR1</code> and a free Riot API key on the server.
+       Any athlete or pro gamer with a Wikipedia page gets the career numbers from their Wikipedia infobox,
+       which is edited by hand and can be out of date.</p>
   </footer>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>

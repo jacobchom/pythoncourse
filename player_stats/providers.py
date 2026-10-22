@@ -9,6 +9,8 @@ No single API covers every sport and game, so the site asks all of
 them at once and merges what comes back.
 """
 
+import os
+import re
 import time
 import urllib.parse
 
@@ -25,13 +27,13 @@ _cache = {}
 CACHE_SECONDS = 600
 
 
-def get_json(url, params=None, cache_seconds=CACHE_SECONDS):
+def get_json(url, params=None, cache_seconds=CACHE_SECONDS, headers=None):
     """GET a URL and return parsed JSON, or None for a 404."""
     key = url + "?" + urllib.parse.urlencode(sorted((params or {}).items()))
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < cache_seconds:
         return hit[1]
-    response = _session.get(url, params=params, timeout=TIMEOUT)
+    response = _session.get(url, params=params, timeout=TIMEOUT, headers=headers)
     if response.status_code == 404:
         data = None
     else:
@@ -77,6 +79,10 @@ class Provider:
     label = ""       # name of the data source
     category = ""    # sport / game shown on the result card
     has_stats = True # False for sources that only give a bio
+
+    def enabled(self):
+        """Providers that need an API key switch themselves off without one."""
+        return True
 
     def search(self, query):
         raise NotImplementedError
@@ -447,22 +453,330 @@ class SportsDBProvider(Provider):
 
 
 # --------------------------------------------------------------------------
-# Fallback for anyone else (LoL, CS, tennis, F1...) - Wikipedia
+# NBA, NFL, soccer, college, WNBA... - ESPN's public site API
+# (unofficial: ESPN doesn't document it and could change it at any time)
 # --------------------------------------------------------------------------
+class ESPNProvider(Provider):
+    key = "espn"
+    label = "ESPN"
+    category = "Sports (ESPN)"
+    base = "https://site.web.api.espn.com/apis/common/v3"
+
+    # ESPN ids found inside "uid" strings like "s:40~l:46~a:1966".
+    SPORTS = {"40": "basketball", "20": "football", "1": "baseball", "70": "hockey",
+              "600": "soccer", "850": "tennis", "1100": "golf", "2000": "racing", "3301": "mma"}
+    LEAGUES = {"46": "nba", "59": "wnba", "41": "mens-college-basketball",
+               "54": "womens-college-basketball", "28": "nfl", "23": "college-football",
+               "10": "mlb", "90": "nhl"}
+    NICE = {"nba": "Basketball (NBA)", "wnba": "Basketball (WNBA)", "nfl": "American football (NFL)",
+            "college-football": "College football", "mens-college-basketball": "College basketball",
+            "womens-college-basketball": "College basketball"}
+    SKIP = {"mlb", "nhl"}  # the official MLB and NHL APIs are better
+
+    @staticmethod
+    def slug(value):
+        if isinstance(value, dict):
+            return value.get("slug") or value.get("abbreviation", "").lower() or None
+        return value or None
+
+    def where(self, item):
+        sport, league = self.slug(item.get("sport")), self.slug(item.get("league"))
+        uid = dict(part.split(":", 1) for part in (item.get("uid") or "").split("~") if ":" in part)
+        sport = sport or self.SPORTS.get(uid.get("s"))
+        league = league or self.LEAGUES.get(uid.get("l"))
+        return sport, league, item.get("id") or uid.get("a")
+
+    def search(self, query):
+        data = get_json(f"{self.base}/search", {"query": query, "limit": 10, "type": "player"}) or {}
+        results = []
+        for item in data.get("items", []):
+            if item.get("type", "player") != "player":
+                continue
+            sport, league, aid = self.where(item)
+            if not (sport and league and aid) or league in self.SKIP:
+                continue
+            image = (item.get("headshot") or {}).get("href") if isinstance(item.get("headshot"), dict) else None
+            category = self.NICE.get(league, f"{sport.title()} ({league.upper()})")
+            results.append(self.result(f"{sport}/{league}/{aid}", item.get("displayName", "?"),
+                                       item.get("description") or item.get("subtitle") or "",
+                                       image, category))
+            if len(results) >= 6:
+                break
+        return results
+
+    def details(self, player_id):
+        try:
+            sport, league, aid = player_id.split("/")
+        except ValueError:
+            return None
+        root = f"{self.base}/sports/{sport}/{league}/athletes/{aid}"
+        bio_data = get_json(root) or {}
+        athlete = bio_data.get("athlete", bio_data)
+        if not athlete.get("displayName"):
+            return None
+        overview = get_json(f"{root}/overview") or {}
+
+        sections = []
+        bio = [[k, v] for k, v in [
+            ("Team", (athlete.get("team") or {}).get("displayName")),
+            ("Position", (athlete.get("position") or {}).get("displayName")),
+            ("Number", athlete.get("jersey")),
+            ("Born", athlete.get("displayDOB")),
+            ("Height", athlete.get("displayHeight")),
+            ("Weight", athlete.get("displayWeight")),
+            ("Experience", (athlete.get("displayExperience"))),
+        ] if v]
+        sections.append(section("Bio", bio))
+
+        stats = overview.get("statistics") or {}
+        labels = stats.get("displayNames") or stats.get("labels") or []
+        for split in stats.get("splits", []):
+            values = split.get("stats", [])
+            rows = [[label, value] for label, value in zip(labels, values) if value not in (None, "")]
+            sections.append(section(split.get("displayName", "Stats"), rows))
+
+        note = None
+        if len(sections) == 1 or not any(s for s in sections[1:]):
+            note = "ESPN had no stat table for this player (common for soccer and retired players)."
+        headshot = athlete.get("headshot")
+        return profile(athlete["displayName"], self.NICE.get(league, f"{sport.title()} ({league.upper()})"),
+                       headshot.get("href") if isinstance(headshot, dict) else None, sections,
+                       [["ESPN", f"https://www.espn.com/{sport}/player/_/id/{aid}"]], note)
+
+
+# --------------------------------------------------------------------------
+# League of Legends - Riot Games API (needs a free key: set RIOT_API_KEY)
+# --------------------------------------------------------------------------
+class RiotProvider(Provider):
+    key = "lol"
+    label = "Riot Games API"
+    category = "League of Legends"
+
+    def enabled(self):
+        return bool(os.environ.get("RIOT_API_KEY"))
+
+    @property
+    def headers(self):
+        return {"X-Riot-Token": os.environ.get("RIOT_API_KEY", "")}
+
+    @property
+    def region(self):    # account lookups: americas / europe / asia
+        return os.environ.get("RIOT_REGION", "americas")
+
+    @property
+    def platform(self):  # game servers: na1, euw1, kr...
+        return os.environ.get("RIOT_PLATFORM", "na1")
+
+    def ddragon(self):
+        versions = get_json("https://ddragon.leagueoflegends.com/api/versions.json", cache_seconds=86400)
+        return versions[0] if versions else None
+
+    def search(self, query):
+        # Riot only lets you look up exact Riot IDs, written as Name#TAG.
+        if "#" not in query:
+            return []
+        name, tag = (part.strip() for part in query.split("#", 1))
+        if not name or not tag:
+            return []
+        url = (f"https://{self.region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/"
+               f"{urllib.parse.quote(name)}/{urllib.parse.quote(tag)}")
+        account = get_json(url, headers=self.headers)
+        if not account:
+            return []
+        return [self.result(account["puuid"], f"{account.get('gameName')}#{account.get('tagLine')}",
+                            f"Server: {self.platform.upper()}")]
+
+    def details(self, puuid):
+        platform = f"https://{self.platform}.api.riotgames.com"
+        account = get_json(f"https://{self.region}.api.riotgames.com/riot/account/v1/accounts/by-puuid/{puuid}",
+                           headers=self.headers)
+        if not account:
+            return None
+        summoner = get_json(f"{platform}/lol/summoner/v4/summoners/by-puuid/{puuid}", headers=self.headers) or {}
+        leagues = get_json(f"{platform}/lol/league/v4/entries/by-puuid/{puuid}", headers=self.headers) or []
+        mastery = get_json(f"{platform}/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top",
+                           {"count": 5}, headers=self.headers) or []
+
+        version = self.ddragon()
+        champs = {}
+        if version:
+            data = get_json(f"https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/champion.json",
+                            cache_seconds=86400) or {}
+            champs = {int(c["key"]): c["name"] for c in data.get("data", {}).values()}
+
+        sections = [section("Account", [[k, v] for k, v in [
+            ("Summoner level", summoner.get("summonerLevel")), ("Server", self.platform.upper())] if v])]
+        queues = {"RANKED_SOLO_5x5": "Ranked Solo/Duo", "RANKED_FLEX_SR": "Ranked Flex"}
+        for entry in leagues:
+            wins, losses = entry.get("wins", 0), entry.get("losses", 0)
+            sections.append(section(queues.get(entry.get("queueType"), entry.get("queueType", "Ranked")), [
+                ["Rank", f"{entry.get('tier', '').title()} {entry.get('rank', '')}".strip()],
+                ["LP", entry.get("leaguePoints")],
+                ["Wins", wins], ["Losses", losses],
+                ["Win rate", f"{wins / (wins + losses):.1%}" if wins + losses else "-"],
+            ]))
+        sections.append(section("Top champions (mastery)", [
+            [champs.get(m.get("championId"), f"Champion {m.get('championId')}"),
+             f"Level {m.get('championLevel')} · {m.get('championPoints', 0):,} pts"] for m in mastery]))
+        icon = summoner.get("profileIconId")
+        image = (f"https://ddragon.leagueoflegends.com/cdn/{version}/img/profileicon/{icon}.png"
+                 if version and icon is not None else None)
+        name = f"{account.get('gameName')}#{account.get('tagLine')}"
+        return profile(name, self.category, image, sections,
+                       [["op.gg", f"https://www.op.gg/summoners/{self.platform[:-1] if self.platform[-1].isdigit() else self.platform}/"
+                                  f"{urllib.parse.quote(account.get('gameName', ''))}-{urllib.parse.quote(account.get('tagLine', ''))}"]],
+                       None if leagues else "Unranked this season.")
+
+
+# --------------------------------------------------------------------------
+# Everyone else (tennis, F1, boxing, cricket, CS, LoL pros...) - Wikipedia.
+# Most athlete pages have an "infobox" with career numbers; we read those.
+# --------------------------------------------------------------------------
+INFOBOX_SKIP = {"image", "image_size", "imagesize", "caption", "alt", "signature", "module",
+                "embed", "upright", "logo", "website", "footnotes", "medaltemplates", "name",
+                "pcupdate", "ntupdate", "update", "updated", "image_upright", "landscape",
+                "child", "fullname", "full_name", "signature_alt", "honorific_prefix",
+                "honorific_suffix", "nickname", "native_name", "medals", "headercolor",
+                "background", "module2", "module3", "pronunciation"}
+INFOBOX_LABELS = {"currentclub": "Current club", "clubnumber": "Shirt number",
+                  "careerprize": "Career prize money", "singlesrecord": "Singles record",
+                  "singlestitles": "Singles titles", "highestsinglesranking": "Highest singles ranking",
+                  "currentsinglesranking": "Current singles ranking", "doublesrecord": "Doubles record",
+                  "doublestitles": "Doubles titles", "turnedpro": "Turned pro", "plays": "Plays",
+                  "fastest_laps": "Fastest laps", "first_win": "First win", "last_win": "Last win",
+                  "total_fights": "Total fights", "ko": "Wins by KO", "draft_year": "Draft year",
+                  "draft_pick": "Draft pick", "nba_draft_year": "NBA draft year",
+                  "career_start": "Career start", "career_end": "Career end",
+                  "team_history": "Teams", "role": "Role", "game": "Game"}
+CAREER_KEYS = {"years", "clubs", "caps", "goals", "youthyears", "youthclubs",
+               "nationalyears", "nationalteam", "nationalcaps", "nationalgoals",
+               "manageryears", "managerclubs"}
+
+
+def split_infobox(wikitext):
+    """Return {param: raw value} for the first {{Infobox ...}} in the page."""
+    start = wikitext.lower().find("{{infobox")
+    if start == -1:
+        return {}
+    parts, current, braces, brackets, i = [], [], 0, 0, start
+    while i < len(wikitext):
+        two = wikitext[i:i + 2]
+        if two == "{{":
+            braces += 1
+        elif two == "}}":
+            braces -= 1
+            if braces == 0:
+                parts.append("".join(current))
+                break
+        elif two == "[[":
+            brackets += 1
+        elif two == "]]":
+            brackets -= 1
+        if two in ("{{", "}}", "[[", "]]"):
+            current.append(two)
+            i += 2
+            continue
+        if wikitext[i] == "|" and braces == 1 and brackets == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(wikitext[i])
+        i += 1
+    params = {}
+    for part in parts[1:]:
+        if "=" in part:
+            key, value = part.split("=", 1)
+            params[key.strip().lower().replace(" ", "_")] = value
+    return params
+
+
+def _template(match):
+    args = [a.strip() for a in match.group(1).split("|")]
+    name = args[0].lower()
+    plain = [a for a in args[1:] if "=" not in a]
+    if name.startswith(("birth date", "death date", "start date", "end date", "dob")):
+        nums = [a for a in plain if a.isdigit()][:3]
+        return "-".join(n if i == 0 else n.zfill(2) for i, n in enumerate(nums))
+    if name in ("nowrap", "nobr", "small", "abbr", "nbsp", "lang", "nowrap begin", "tooltip"):
+        return plain[0] if plain else ""
+    if name in ("ubl", "unbulleted list", "plainlist", "hlist", "flatlist", "ublist", "bulleted list"):
+        return ", ".join(plain)
+    if name in ("sortname",):
+        return " ".join(plain[:2])
+    if name in ("height",) and plain:
+        return " ".join(plain)
+    if name in ("convert", "cvt") and len(plain) >= 2:
+        return f"{plain[0]} {plain[1]}"
+    return ""
+
+
+def clean_wikitext(value):
+    value = re.sub(r"<!--.*?-->", "", value, flags=re.S)
+    value = re.sub(r"<ref[^>]*/>", "", value)
+    value = re.sub(r"<ref[^>]*>.*?</ref>", "", value, flags=re.S)
+    value = re.sub(r"<br\s*/?>", ", ", value)
+    for _ in range(5):  # innermost templates first
+        value, n = re.subn(r"\{\{([^{}]*)\}\}", _template, value)
+        if not n:
+            break
+    value = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]*)\]\]", r"\1", value)
+    value = re.sub(r"\[https?://\S+\s+([^\]]+)\]", r"\1", value)
+    value = re.sub(r"<[^>]+>", "", value)
+    value = value.replace("'''", "").replace("''", "").replace("&nbsp;", " ")
+    value = re.sub(r"\n\s*\*\s*", ", ", value)
+    value = re.sub(r"\s+", " ", value).strip(" ,;")
+    return value
+
+
+def infobox_sections(params):
+    facts, numbered = [], {}
+    for key, raw in params.items():
+        m = re.match(r"^([a-z_]+?)(\d+)$", key)
+        if m and m.group(1) in CAREER_KEYS:
+            numbered.setdefault(int(m.group(2)), {})[m.group(1)] = clean_wikitext(raw)
+            continue
+        if key in INFOBOX_SKIP or key.endswith(("_ref", "_alt", "_caption")):
+            continue
+        value = clean_wikitext(raw)
+        if value and len(value) < 200:
+            label = INFOBOX_LABELS.get(key) or key.replace("_", " ").strip().capitalize()
+            facts.append([label, value])
+
+    def career(prefix, team_key, caps_key, goals_key):
+        rows = []
+        for n in sorted(numbered):
+            row = numbered[n]
+            team = row.get(team_key)
+            if not team:
+                continue
+            label = " ".join(filter(None, [row.get(prefix), team]))
+            caps, goals = row.get(caps_key), row.get(goals_key)
+            value = f"{caps} apps" if caps else ""
+            if goals:
+                value += f" ({goals} goals)"
+            rows.append([label, value or "-"])
+        return rows
+
+    return [section("Career facts (Wikipedia infobox)", facts[:30]),
+            section("Club career", career("years", "clubs", "caps", "goals")),
+            section("International career", career("nationalyears", "nationalteam", "nationalcaps", "nationalgoals"))]
+
+
 class WikipediaProvider(Provider):
     key = "wiki"
     label = "Wikipedia"
     category = "Wikipedia"
-    has_stats = False
     SPORTY = ("player", "athlete", "footballer", "cricketer", "gamer", "esports",
               "racing", "driver", "boxer", "fighter", "tennis", "golfer", "swimmer",
               "runner", "sprinter", "skater", "wrestler", "cyclist", "olympi",
-              "basketball", "baseball", "hockey", "quarterback", "chess", "coach")
+              "basketball", "baseball", "hockey", "quarterback", "chess", "coach",
+              "jockey", "climber", "skier", "snowboarder", "gymnast", "rower", "darts",
+              "snooker", "streamer", "artist", "mixed martial")
 
     def search(self, query):
         data = get_json("https://en.wikipedia.org/w/api.php", {
             "action": "query", "format": "json", "generator": "search",
-            "gsrsearch": query, "gsrlimit": 8, "prop": "description|pageimages",
+            "gsrsearch": query, "gsrlimit": 10, "prop": "description|pageimages",
             "piprop": "thumbnail", "pithumbsize": 200,
         }) or {}
         pages = sorted(data.get("query", {}).get("pages", {}).values(),
@@ -475,7 +789,7 @@ class WikipediaProvider(Provider):
                 continue
             results.append(self.result(page["title"], page["title"], desc,
                                        page.get("thumbnail", {}).get("source")))
-            if len(results) >= 3:
+            if len(results) >= 4:
                 break
         return results
 
@@ -484,14 +798,26 @@ class WikipediaProvider(Provider):
         data = get_json(f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}")
         if not data:
             return None
+        sections = [{"title": "Summary", "text": data.get("extract", "")}]
+        try:
+            parsed = get_json("https://en.wikipedia.org/w/api.php", {
+                "action": "parse", "page": player_id, "prop": "wikitext", "section": 0,
+                "format": "json", "formatversion": 2, "redirects": 1}) or {}
+            sections += infobox_sections(split_infobox(parsed.get("parse", {}).get("wikitext", "")))
+        except requests.RequestException:
+            pass  # the summary is still worth showing
         return profile(data.get("title", player_id), data.get("description", ""),
-                       data.get("thumbnail", {}).get("source"),
-                       [{"title": "Summary", "text": data.get("extract", "")}],
+                       data.get("thumbnail", {}).get("source"), sections,
                        [["Wikipedia", data.get("content_urls", {}).get("desktop", {}).get(
                            "page", f"https://en.wikipedia.org/wiki/{title}")]],
-                       "Wikipedia gives a summary, not a stats table. Check the full article for career stats.")
+                       "Stats come from the Wikipedia infobox, which editors update by hand, "
+                       "so they can lag behind the latest games.")
 
 
-PROVIDERS = [MLBProvider(), NHLProvider(), OpenDotaProvider(), ChessComProvider(),
-             LichessProvider(), SportsDBProvider(), WikipediaProvider()]
+PROVIDERS = [MLBProvider(), NHLProvider(), ESPNProvider(), OpenDotaProvider(), RiotProvider(),
+             ChessComProvider(), LichessProvider(), WikipediaProvider(), SportsDBProvider()]
 BY_KEY = {p.key: p for p in PROVIDERS}
+
+
+def active_providers():
+    return [p for p in PROVIDERS if p.enabled()]

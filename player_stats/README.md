@@ -16,16 +16,30 @@ python -m unittest discover tests   # offline tests, no internet needed
 |---|---|---|
 | MLB Stats API | Baseball: career + latest season hitting/pitching | MLB only |
 | NHL API | Hockey: current season, career, playoffs | NHL only |
+| ESPN | NBA, WNBA, NFL, college sports, some soccer: season + career stat tables | **Unofficial, undocumented API**; ESPN can change or block it at any time. Soccer often has no stat table |
 | OpenDota | Dota 2: win rate, rank, top heroes | Search covers **pro players only** |
+| Riot Games API | League of Legends: rank, LP, win rate, top champions | **Off unless `RIOT_API_KEY` is set**; needs an exact Riot ID like `Faker#KR1`; dev keys expire every 24h |
 | Chess.com | Ratings and W/L/D per time control | Needs the **exact username** |
 | Lichess | Ratings per variant, overall record | Fuzzy username search |
-| TheSportsDB | Soccer, NBA, NFL, rugby, F1, etc. | Free tier = **profile only, no stats** |
-| Wikipedia | Anyone else (LoL, CS, tennis…) | **Summary only, no stats** |
+| Wikipedia | Anyone with a page (tennis, F1, boxing, cricket, CS/LoL pros, footballers…): career numbers from the infobox, plus club/international apps & goals | Hand-edited, can be out of date; infobox layouts vary so some fields come out messy |
+| TheSportsDB | Profiles across most sports | Free tier = **profile only, no stats** |
 
-**Not covered with real stats:** NBA, NFL, soccer, League of Legends, Valorant,
-Fortnite, CS2. These need paid or key-based APIs (balldontlie, API-Football,
-Riot Games API, etc.). To add one, write a new `Provider` subclass in
-`providers.py` with `search()` and `details()`, and add it to `PROVIDERS`.
+**Still not covered:** amateur players in most games, Valorant, Fortnite, CS2
+match stats, Rocket League, Overwatch, and anyone without a Wikipedia page.
+Those need game-specific APIs (often paid or key-based). To add one, write a
+new `Provider` subclass in `providers.py` with `search()` and `details()`
+(and `enabled()` if it needs a key), then add it to `PROVIDERS`.
+
+### Optional: League of Legends
+
+Get a free development key at https://developer.riotgames.com, then:
+
+```
+export RIOT_API_KEY=RGAPI-...
+export RIOT_REGION=europe     # americas (default) / europe / asia
+export RIOT_PLATFORM=euw1     # na1 (default) / euw1 / kr / ...
+python app.py
+```
 
 ## How it works
 

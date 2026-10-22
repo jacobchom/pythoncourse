@@ -71,11 +71,64 @@ FAKE = {
         "2": {"index": 2, "title": "Faker", "description": "Disambiguation page"}}}},
     "en.wikipedia.org/api/rest_v1/page/summary/Faker_%28gamer%29": {
         "title": "Faker (gamer)", "description": "South Korean esports player", "extract": "Lee Sang-hyeok..."},
+    "en.wikipedia.org/api/rest_v1/page/summary/Lionel_Messi": {
+        "title": "Lionel Messi", "description": "Argentine footballer", "extract": "Messi is..."},
+    "site.web.api.espn.com/apis/common/v3/search": {"items": [
+        {"id": "1966", "type": "player", "displayName": "LeBron James",
+         "uid": "s:40~l:46~a:1966", "description": "Los Angeles Lakers"},
+        {"id": "33039", "type": "player", "displayName": "Some MLB Guy", "sport": "baseball", "league": "mlb"},
+        {"id": "9", "type": "team", "displayName": "Not a player", "uid": "s:40~l:46~t:13"}]},
+    "site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/1966": {"athlete": {
+        "displayName": "LeBron James", "team": {"displayName": "Los Angeles Lakers"},
+        "position": {"displayName": "Small Forward"}, "jersey": "23",
+        "headshot": {"href": "https://example.com/lebron.png"}}},
+    "site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/1966/overview": {"statistics": {
+        "labels": ["GP", "PTS", "REB", "AST"],
+        "displayNames": ["Games Played", "Points Per Game", "Rebounds Per Game", "Assists Per Game"],
+        "splits": [{"displayName": "Regular Season", "stats": ["70", "25.7", "7.3", "8.3"]},
+                   {"displayName": "Career", "stats": ["1492", "27.1", "7.5", "7.4"]}]}},
+    "americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/Faker/KR1": {
+        "puuid": "abc-123", "gameName": "Faker", "tagLine": "KR1"},
+    "americas.api.riotgames.com/riot/account/v1/accounts/by-puuid/abc-123": {
+        "puuid": "abc-123", "gameName": "Faker", "tagLine": "KR1"},
+    "na1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/abc-123": {"summonerLevel": 900, "profileIconId": 6},
+    "na1.api.riotgames.com/lol/league/v4/entries/by-puuid/abc-123": [
+        {"queueType": "RANKED_SOLO_5x5", "tier": "CHALLENGER", "rank": "I", "leaguePoints": 1500,
+         "wins": 300, "losses": 200}],
+    "na1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/abc-123/top": [
+        {"championId": 7, "championLevel": 50, "championPoints": 1234567}],
+    "ddragon.leagueoflegends.com/api/versions.json": ["15.1.1"],
+    "ddragon.leagueoflegends.com/cdn/15.1.1/data/en_US/champion.json": {
+        "data": {"Leblanc": {"key": "7", "name": "LeBlanc"}}},
 }
 
+# A trimmed copy of the start of a real Wikipedia football article.
+MESSI_WIKITEXT = """{{Short description|Argentine footballer}}
+{{Infobox football biography
+| name = Lionel Messi
+| image = Lionel Messi 2022.jpg
+| caption = Messi with Argentina in 2022
+| birth_date = {{birth date and age|1987|6|24|df=y}}
+| birth_place = [[Rosario, Santa Fe|Rosario]], Argentina
+| height = 1.70 m<ref>{{cite web|url=http://x.com}}</ref>
+| position = [[Forward (association football)|Forward]]
+| currentclub = [[Inter Miami CF|Inter Miami]]
+| years1 = 2004–2021 | clubs1 = [[FC Barcelona|Barcelona]] | caps1 = 520 | goals1 = 474
+| years2 = 2021–2023 | clubs2 = [[Paris Saint-Germain F.C.|Paris Saint-Germain]] | caps2 = 58 | goals2 = 22
+| nationalyears1 = 2005– | nationalteam1 = [[Argentina national football team|Argentina]]
+| nationalcaps1 = 191 | nationalgoals1 = 112
+| medaltemplates = {{MedalSport|Men's football}}
+}}
+'''Lionel Andres Messi''' is an Argentine footballer."""
 
-def fake_get_json(url, params=None, cache_seconds=None):
+
+def fake_get_json(url, params=None, cache_seconds=None, headers=None):
     key = url.split("://", 1)[1]
+    if "riotgames.com" in key:
+        assert headers and headers.get("X-Riot-Token"), "Riot calls must send the API key"
+    if key == "en.wikipedia.org/w/api.php" and (params or {}).get("action") == "parse":
+        text = MESSI_WIKITEXT if params["page"] == "Lionel Messi" else "No infobox here."
+        return {"parse": {"wikitext": text}}
     if key not in FAKE and "chess.com" in key:
         return None  # unknown username -> 404
     if key not in FAKE:
@@ -151,6 +204,48 @@ class ProviderTests(unittest.TestCase):
         prof = p.details("34146370")
         self.assertEqual(self.rows(prof, "Profile")["Nationality"], "Argentina")
 
+    def test_espn(self):
+        p = providers.ESPNProvider()
+        results = p.search("lebron")
+        self.assertEqual([r["name"] for r in results], ["LeBron James"])  # MLB guy + team skipped
+        self.assertEqual(results[0]["id"], "basketball/nba/1966")
+        self.assertEqual(results[0]["category"], "Basketball (NBA)")
+        prof = p.details("basketball/nba/1966")
+        self.assertEqual(self.rows(prof, "Career")["Points Per Game"], "27.1")
+        self.assertEqual(self.rows(prof, "Bio")["Number"], "23")
+        self.assertIsNone(p.details("not-a-valid-id"))
+
+    def test_riot_disabled_without_key(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(providers.RiotProvider().enabled())
+
+    def test_riot_with_key(self):
+        with mock.patch.dict(os.environ, {"RIOT_API_KEY": "test-key"}):
+            p = providers.RiotProvider()
+            self.assertEqual(p.search("Faker"), [])  # needs Name#TAG
+            [hit] = p.search("Faker#KR1")
+            prof = p.details(hit["id"])
+        solo = self.rows(prof, "Ranked Solo/Duo")
+        self.assertEqual(solo["Rank"], "Challenger I")
+        self.assertEqual(solo["Win rate"], "60.0%")
+        self.assertEqual(self.rows(prof, "Top champions (mastery)"),
+                         {"LeBlanc": "Level 50 · 1,234,567 pts"})
+
+    def test_wikipedia_infobox_stats(self):
+        prof = providers.WikipediaProvider().details("Lionel Messi")
+        facts = self.rows(prof, "Career facts (Wikipedia infobox)")
+        self.assertEqual(facts["Birth date"], "1987-06-24")
+        self.assertEqual(facts["Birth place"], "Rosario, Argentina")
+        self.assertEqual(facts["Height"], "1.70 m")
+        self.assertEqual(facts["Position"], "Forward")
+        self.assertNotIn("Image", facts)
+        self.assertNotIn("Medaltemplates", facts)
+        self.assertEqual(self.rows(prof, "Club career"), {
+            "2004–2021 Barcelona": "520 apps (474 goals)",
+            "2021–2023 Paris Saint-Germain": "58 apps (22 goals)"})
+        self.assertEqual(self.rows(prof, "International career"),
+                         {"2005– Argentina": "191 apps (112 goals)"})
+
     def test_wikipedia_filters_non_athletes(self):
         p = providers.WikipediaProvider()
         results = p.search("faker")
@@ -177,9 +272,13 @@ class RouteTests(unittest.TestCase):
         names = [r["name"] for r in data["results"]]
         self.assertIn("Miracle-", names)
         self.assertIn({"source": "MLB Stats API", "error": "ConnectionError"}, data["errors"])
-        # Results with real stats come before bio-only ones.
-        flags = [r["has_stats"] for r in data["results"]]
-        self.assertEqual(flags, sorted(flags, reverse=True))
+        # Dedicated APIs first, then Wikipedia, then TheSportsDB profiles.
+        order = [{"wiki": 1, "sportsdb": 2}.get(r["source"], 0) for r in data["results"]]
+        self.assertEqual(order, sorted(order))
+
+    def test_disabled_source_is_404(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.client.get("/api/player/lol/abc-123").status_code, 404)
 
     def test_search_too_short(self):
         data = self.client.get("/api/search?q=a").get_json()

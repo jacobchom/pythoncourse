@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 
 from flask import Flask, jsonify, render_template, request
 
-from providers import BY_KEY, PROVIDERS
+from providers import BY_KEY, PROVIDERS, active_providers
 
 app = Flask(__name__)
 pool = ThreadPoolExecutor(max_workers=len(PROVIDERS))
@@ -19,7 +19,7 @@ SEARCH_DEADLINE = 12  # seconds to wait for all sources before giving up on slow
 
 @app.route("/")
 def index():
-    return render_template("index.html", providers=PROVIDERS)
+    return render_template("index.html", providers=active_providers())
 
 
 @app.route("/api/search")
@@ -30,7 +30,9 @@ def search():
                         "message": "Type at least 2 characters."})
 
     wanted = request.args.get("sources")
-    providers = [BY_KEY[k] for k in wanted.split(",") if k in BY_KEY] if wanted else PROVIDERS
+    providers = active_providers()
+    if wanted:
+        providers = [p for p in providers if p.key in wanted.split(",")]
 
     # Ask every source at the same time so one slow API doesn't block the rest.
     futures = {pool.submit(p.search, query): p for p in providers}
@@ -47,16 +49,18 @@ def search():
         except Exception as exc:  # one broken API shouldn't break the whole search
             errors.append({"source": provider.label, "error": type(exc).__name__})
 
-    # Sources with real stats first, then name matches before partial matches.
+    # Dedicated stats APIs first, then Wikipedia, then profile-only sources;
+    # within each group exact name matches come first.
     q = query.lower()
-    results.sort(key=lambda r: (not r["has_stats"], r["name"].lower() != q))
+    tier = {"wiki": 1, "sportsdb": 2}
+    results.sort(key=lambda r: (tier.get(r["source"], 0), r["name"].lower() != q))
     return jsonify({"query": query, "results": results, "errors": errors})
 
 
 @app.route("/api/player/<source>/<path:player_id>")
 def player(source, player_id):
     provider = BY_KEY.get(source)
-    if not provider:
+    if not provider or not provider.enabled():
         return jsonify({"error": f"Unknown source '{source}'"}), 404
     try:
         data = provider.details(player_id)
