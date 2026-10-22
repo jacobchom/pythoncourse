@@ -502,23 +502,66 @@ class ESPNProvider(Provider):
                                        image, category))
             if len(results) >= 6:
                 break
-        return results
+        return results or self.search_v2(query)
+
+    def search_v2(self, query):
+        """Fallback: ESPN's general site search, which groups hits by type."""
+        data = get_json("https://site.web.api.espn.com/apis/search/v2", {"query": query, "limit": 10}) or {}
+        results = []
+        for group in data.get("results", []):
+            if group.get("type") != "player":
+                continue
+            for item in group.get("contents", []):
+                sport, league, aid = self.where({**item, "league": item.get("defaultLeagueSlug") or item.get("league")})
+                if not (sport and league and aid) or league in self.SKIP:
+                    continue
+                image = item.get("image", {}).get("default") if isinstance(item.get("image"), dict) else None
+                results.append(self.result(f"{sport}/{league}/{aid}", item.get("displayName", "?"),
+                                           item.get("subtitle") or item.get("description") or "", image,
+                                           self.NICE.get(league, f"{sport.title()} ({league.upper()})")))
+        return results[:6]
+
+    def athlete(self, sport, league, aid):
+        """Bio from the common v3 endpoint, falling back to the documented Core API."""
+        for url in (f"{self.base}/sports/{sport}/{league}/athletes/{aid}",
+                    f"https://sports.core.api.espn.com/v2/sports/{sport}/leagues/{league}/athletes/{aid}"):
+            try:
+                data = get_json(url) or {}
+            except requests.RequestException:
+                continue
+            athlete = data.get("athlete", data)
+            if athlete.get("displayName"):
+                return athlete
+        return None
+
+    @staticmethod
+    def stat_sections(stats):
+        """ESPN returns either several splits (season, career) or one flat list."""
+        labels = stats.get("displayNames") or stats.get("labels") or []
+        sections = []
+        for split in stats.get("splits", []):
+            values = split.get("stats", [])
+            rows = [[label, value] for label, value in zip(labels, values) if value not in (None, "")]
+            sections.append(section(split.get("displayName", "Stats"), rows))
+        values = stats.get("displayValues") or stats.get("values")
+        if not sections and values:
+            rows = [[label, value] for label, value in zip(labels, values) if value not in (None, "")]
+            sections.append(section(stats.get("displayName") or "Current season", rows))
+        return sections
 
     def details(self, player_id):
         try:
             sport, league, aid = player_id.split("/")
         except ValueError:
             return None
-        root = f"{self.base}/sports/{sport}/{league}/athletes/{aid}"
-        bio_data = get_json(root) or {}
-        athlete = bio_data.get("athlete", bio_data)
-        if not athlete.get("displayName"):
+        athlete = self.athlete(sport, league, aid)
+        if not athlete:
             return None
-        overview = get_json(f"{root}/overview") or {}
+        overview = get_json(f"{self.base}/sports/{sport}/{league}/athletes/{aid}/overview") or {}
 
         sections = []
         bio = [[k, v] for k, v in [
-            ("Team", (athlete.get("team") or {}).get("displayName")),
+            ("Team", (athlete.get("team") or {}).get("displayName")),  # Core API gives a $ref here
             ("Position", (athlete.get("position") or {}).get("displayName")),
             ("Number", athlete.get("jersey")),
             ("Born", athlete.get("displayDOB")),
@@ -528,12 +571,7 @@ class ESPNProvider(Provider):
         ] if v]
         sections.append(section("Bio", bio))
 
-        stats = overview.get("statistics") or {}
-        labels = stats.get("displayNames") or stats.get("labels") or []
-        for split in stats.get("splits", []):
-            values = split.get("stats", [])
-            rows = [[label, value] for label, value in zip(labels, values) if value not in (None, "")]
-            sections.append(section(split.get("displayName", "Stats"), rows))
+        sections += self.stat_sections(overview.get("statistics") or {})
 
         note = None
         if len(sections) == 1 or not any(s for s in sections[1:]):
@@ -626,6 +664,221 @@ class RiotProvider(Provider):
                        [["op.gg", f"https://www.op.gg/summoners/{self.platform[:-1] if self.platform[-1].isdigit() else self.platform}/"
                                   f"{urllib.parse.quote(account.get('gameName', ''))}-{urllib.parse.quote(account.get('tagLine', ''))}"]],
                        None if leagues else "Unranked this season.")
+
+
+# --------------------------------------------------------------------------
+# Overwatch 2 - OverFast API (free, no key; reads public Blizzard profiles)
+# Field names checked against app/api/models/players.py in TeKrop/overfast-api.
+# --------------------------------------------------------------------------
+class OverwatchProvider(Provider):
+    key = "ow"
+    label = "OverFast (Overwatch)"
+    category = "Overwatch 2"
+    base = "https://overfast-api.tekrop.fr"
+
+    def search(self, query):
+        name = query.split("#")[0].strip()
+        if len(name) < 3 or " " in name:
+            return []  # BattleTags never contain spaces
+        data = get_json(f"{self.base}/players", {"name": name, "limit": 6}) or {}
+        results = []
+        for p in data.get("results", []):
+            sub = "Public profile" if p.get("is_public", True) else "Private profile"
+            results.append(self.result(p["player_id"], p.get("name", p["player_id"]), sub, p.get("avatar")))
+        return results
+
+    @staticmethod
+    def summary_rows(stats):
+        avg = stats.get("average") or {}
+        rows = [[k, v] for k, v in [
+            ("Games", stats.get("games_played")),
+            ("Wins", stats.get("games_won")),
+            ("Win rate", f"{stats['winrate']}%" if stats.get("winrate") is not None else None),
+            ("KDA", stats.get("kda")),
+            ("Hours played", round(stats["time_played"] / 3600, 1) if stats.get("time_played") else None),
+            ("Elims / 10 min", avg.get("eliminations")),
+            ("Damage / 10 min", avg.get("damage")),
+            ("Healing / 10 min", avg.get("healing")),
+        ] if v is not None]
+        return rows
+
+    def details(self, player_id):
+        summary = get_json(f"{self.base}/players/{player_id}/summary")
+        if not summary:
+            return None
+        sections = []
+        ranks = []
+        for platform, ladder in (summary.get("competitive") or {}).items():
+            for role in ("tank", "damage", "support", "open"):
+                rank = (ladder or {}).get(role)
+                if rank and rank.get("division"):
+                    ranks.append([f"{role.title()} ({platform.upper()})",
+                                  f"{rank['division'].title()} {rank.get('tier', '')}".strip()])
+        sections.append(section("Competitive rank", ranks))
+        endorsement = (summary.get("endorsement") or {}).get("level")
+        if endorsement:
+            sections.append(section("Profile", [["Endorsement level", endorsement]]))
+
+        stats = get_json(f"{self.base}/players/{player_id}/stats/summary") or {}
+        sections.append(section("All heroes", self.summary_rows(stats.get("general") or {})))
+        for role, role_stats in (stats.get("roles") or {}).items():
+            if role_stats:
+                sections.append(section(role.title(), self.summary_rows(role_stats)))
+        heroes = sorted((stats.get("heroes") or {}).items(),
+                        key=lambda kv: -(kv[1] or {}).get("time_played", 0))
+        top = [[hero.replace("-", " ").title(),
+                f"{(h or {}).get('games_played', 0)} games · {(h or {}).get('winrate', 0)}% wins"]
+               for hero, h in heroes[:5] if h]
+        sections.append(section("Most played heroes", top))
+        note = None if stats.get("general") else "This profile is private, so only the rank is visible."
+        return profile(summary.get("username", player_id), self.category, summary.get("avatar"), sections,
+                       [["Overwatch career", f"https://overwatch.blizzard.com/en-us/career/{player_id}/"]], note)
+
+
+# --------------------------------------------------------------------------
+# Fortnite - fortnite-api.com (free key: set FORTNITE_API_KEY)
+# Field names written from memory of the API docs; not verified offline.
+# --------------------------------------------------------------------------
+class FortniteProvider(Provider):
+    key = "fortnite"
+    label = "Fortnite-API"
+    category = "Fortnite"
+
+    def enabled(self):
+        return bool(os.environ.get("FORTNITE_API_KEY"))
+
+    def stats(self, name):
+        return get_json("https://fortnite-api.com/v2/stats/br/v2", {"name": name},
+                        headers={"Authorization": os.environ.get("FORTNITE_API_KEY", "")})
+
+    def search(self, query):
+        # Exact Epic display name only. 403 = private stats, 404 = no such player.
+        try:
+            data = self.stats(query.strip())
+        except requests.HTTPError:
+            return []
+        account = ((data or {}).get("data") or {}).get("account")
+        if not account:
+            return []
+        return [self.result(account["name"], account["name"], "Epic account")]
+
+    def details(self, player_id):
+        data = (self.stats(player_id) or {}).get("data")
+        if not data:
+            return None
+        sections = []
+        bp = data.get("battlePass") or {}
+        if bp.get("level") is not None:
+            sections.append(section("Battle pass", [["Level", bp["level"]], ["Progress", f"{bp.get('progress', 0)}%"]]))
+        modes = (data.get("stats") or {}).get("all") or {}
+        for mode, title in (("overall", "Overall"), ("solo", "Solo"), ("duo", "Duos"), ("squad", "Squads")):
+            m = modes.get(mode)
+            if m:
+                sections.append(section(title, pick(m, [
+                    ("matches", "Matches"), ("wins", "Wins"), ("winRate", "Win %"), ("kills", "Kills"),
+                    ("kd", "K/D"), ("killsPerMatch", "Kills / match"), ("top10", "Top 10"),
+                    ("minutesPlayed", "Minutes played")])))
+        return profile(data["account"]["name"], self.category, None, sections,
+                       [["Fortnite Tracker", f"https://fortnitetracker.com/profile/all/{urllib.parse.quote(player_id)}"]])
+
+
+# --------------------------------------------------------------------------
+# Valorant - HenrikDev unofficial API (free key: set HENRIK_API_KEY)
+# Field names written from memory of the API docs; not verified offline.
+# --------------------------------------------------------------------------
+class ValorantProvider(Provider):
+    key = "valorant"
+    label = "HenrikDev (Valorant)"
+    category = "Valorant"
+    base = "https://api.henrikdev.xyz/valorant"
+
+    def enabled(self):
+        return bool(os.environ.get("HENRIK_API_KEY"))
+
+    def get(self, path):
+        return get_json(f"{self.base}/{path}", headers={"Authorization": os.environ.get("HENRIK_API_KEY", "")})
+
+    def search(self, query):
+        if "#" not in query:
+            return []  # Riot IDs look like Name#TAG
+        name, tag = (urllib.parse.quote(p.strip()) for p in query.split("#", 1))
+        if not name or not tag:
+            return []
+        account = (self.get(f"v1/account/{name}/{tag}") or {}).get("data")
+        if not account:
+            return []
+        player_id = f"{account.get('region', 'na')}/{account['name']}#{account['tag']}"
+        return [self.result(player_id, f"{account['name']}#{account['tag']}",
+                            f"Level {account.get('account_level', '?')} · {account.get('region', '').upper()}",
+                            (account.get("card") or {}).get("small"))]
+
+    def details(self, player_id):
+        region, riot_id = player_id.split("/", 1)
+        name, tag = (urllib.parse.quote(p) for p in riot_id.split("#", 1))
+        account = (self.get(f"v1/account/{name}/{tag}") or {}).get("data")
+        if not account:
+            return None
+        mmr = (self.get(f"v2/mmr/{region}/{name}/{tag}") or {}).get("data") or {}
+        current = mmr.get("current_data") or {}
+        highest = mmr.get("highest_rank") or {}
+        rank_rows = [[k, v] for k, v in [
+            ("Current rank", current.get("currenttierpatched")),
+            ("Rank rating", current.get("ranking_in_tier")),
+            ("Elo", current.get("elo")),
+            ("Peak rank", highest.get("patched_tier")),
+            ("Peak season", highest.get("season")),
+        ] if v not in (None, "")]
+        return profile(riot_id, self.category, (account.get("card") or {}).get("small"),
+                       [section("Account", [["Level", account.get("account_level")], ["Region", region.upper()]]),
+                        section("Competitive", rank_rows)],
+                       [["tracker.gg", f"https://tracker.gg/valorant/profile/riot/{name}%23{tag}/overview"]],
+                       None if rank_rows else "No competitive rank this act.")
+
+
+# --------------------------------------------------------------------------
+# Counter-Strike 2 (and other FACEIT games) - FACEIT Data API
+# (free key: set FACEIT_API_KEY). Field names written from memory of the
+# API docs; not verified offline.
+# --------------------------------------------------------------------------
+class FaceitProvider(Provider):
+    key = "faceit"
+    label = "FACEIT"
+    category = "Counter-Strike 2 (FACEIT)"
+    base = "https://open.faceit.com/data/v4"
+
+    def enabled(self):
+        return bool(os.environ.get("FACEIT_API_KEY"))
+
+    def get(self, path, params=None):
+        return get_json(f"{self.base}/{path}", params,
+                        headers={"Authorization": f"Bearer {os.environ.get('FACEIT_API_KEY', '')}"})
+
+    def search(self, query):
+        data = self.get("search/players", {"nickname": query.strip(), "game": "cs2", "limit": 5}) or {}
+        results = []
+        for p in data.get("items", []):
+            game = next((g for g in p.get("games", []) if g.get("name") == "cs2"), {})
+            sub = " · ".join(filter(None, [f"Level {game['skill_level']}" if game.get("skill_level") else "",
+                                           (p.get("country") or "").upper()]))
+            results.append(self.result(p["player_id"], p.get("nickname", "?"), sub, p.get("avatar")))
+        return results
+
+    def details(self, player_id):
+        player = self.get(f"players/{player_id}")
+        if not player:
+            return None
+        cs2 = (player.get("games") or {}).get("cs2") or {}
+        sections = [section("FACEIT rank", [[k, v] for k, v in [
+            ("Skill level", cs2.get("skill_level")), ("Elo", cs2.get("faceit_elo")),
+            ("Region", cs2.get("region"))] if v])]
+        lifetime = (self.get(f"players/{player_id}/stats/cs2") or {}).get("lifetime") or {}
+        sections.append(section("Lifetime CS2", pick(lifetime, [
+            ("Matches", "Matches"), ("Wins", "Wins"), ("Win Rate %", "Win rate %"),
+            ("Average K/D Ratio", "K/D"), ("Average Headshots %", "Headshot %"),
+            ("Longest Win Streak", "Longest win streak"), ("Current Win Streak", "Current win streak")])))
+        return profile(player.get("nickname", player_id), self.category, player.get("avatar"), sections,
+                       [["FACEIT", f"https://www.faceit.com/en/players/{player.get('nickname', '')}"]],
+                       None if lifetime else "No CS2 matches on FACEIT.")
 
 
 # --------------------------------------------------------------------------
@@ -814,7 +1067,8 @@ class WikipediaProvider(Provider):
                        "so they can lag behind the latest games.")
 
 
-PROVIDERS = [MLBProvider(), NHLProvider(), ESPNProvider(), OpenDotaProvider(), RiotProvider(),
+PROVIDERS = [MLBProvider(), NHLProvider(), ESPNProvider(), OpenDotaProvider(), OverwatchProvider(),
+             RiotProvider(), ValorantProvider(), FortniteProvider(), FaceitProvider(),
              ChessComProvider(), LichessProvider(), WikipediaProvider(), SportsDBProvider()]
 BY_KEY = {p.key: p for p in PROVIDERS}
 

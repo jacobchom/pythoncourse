@@ -97,6 +97,35 @@ FAKE = {
          "wins": 300, "losses": 200}],
     "na1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/abc-123/top": [
         {"championId": 7, "championLevel": 50, "championPoints": 1234567}],
+    "overfast-api.tekrop.fr/players": {"total": 1, "results": [
+        {"player_id": "TeKrop-2217", "name": "TeKrop#2217", "avatar": None, "is_public": True}]},
+    "overfast-api.tekrop.fr/players/TeKrop-2217/summary": {
+        "username": "TeKrop", "avatar": None, "endorsement": {"level": 3},
+        "competitive": {"pc": {"season": 9, "tank": None,
+                               "damage": {"division": "diamond", "tier": 2}, "support": None, "open": None},
+                        "console": None}},
+    "overfast-api.tekrop.fr/players/TeKrop-2217/stats/summary": {
+        "general": {"games_played": 200, "games_won": 110, "winrate": 55.0, "kda": 3.1,
+                    "time_played": 360000, "average": {"eliminations": 18.2, "damage": 9000}},
+        "roles": {"damage": {"games_played": 150, "winrate": 56.0}, "tank": None},
+        "heroes": {"soldier-76": {"games_played": 80, "winrate": 60, "time_played": 100},
+                   "cassidy": {"games_played": 40, "winrate": 50, "time_played": 50}}},
+    "fortnite-api.com/v2/stats/br/v2": {"status": 200, "data": {
+        "account": {"id": "x", "name": "Ninja"}, "battlePass": {"level": 120, "progress": 40},
+        "stats": {"all": {"overall": {"matches": 1000, "wins": 300, "winRate": 30.0, "kills": 5000, "kd": 7.14},
+                          "solo": {"matches": 400, "wins": 100}}}}},
+    "api.henrikdev.xyz/valorant/v1/account/TenZ/0505": {"status": 200, "data": {
+        "name": "TenZ", "tag": "0505", "region": "na", "account_level": 400, "card": {"small": None}}},
+    "api.henrikdev.xyz/valorant/v2/mmr/na/TenZ/0505": {"status": 200, "data": {
+        "current_data": {"currenttierpatched": "Radiant", "ranking_in_tier": 700, "elo": 3100},
+        "highest_rank": {"patched_tier": "Radiant", "season": "e9a1"}}},
+    "open.faceit.com/data/v4/search/players": {"items": [
+        {"player_id": "fc-1", "nickname": "s1mple", "country": "ua",
+         "games": [{"name": "cs2", "skill_level": 10}]}]},
+    "open.faceit.com/data/v4/players/fc-1": {"player_id": "fc-1", "nickname": "s1mple",
+                                             "games": {"cs2": {"skill_level": 10, "faceit_elo": 3500}}},
+    "open.faceit.com/data/v4/players/fc-1/stats/cs2": {"lifetime": {
+        "Matches": "900", "Win Rate %": "64", "Average K/D Ratio": "1.45", "Average Headshots %": "41"}},
     "ddragon.leagueoflegends.com/api/versions.json": ["15.1.1"],
     "ddragon.leagueoflegends.com/cdn/15.1.1/data/en_US/champion.json": {
         "data": {"Leblanc": {"key": "7", "name": "LeBlanc"}}},
@@ -126,6 +155,8 @@ def fake_get_json(url, params=None, cache_seconds=None, headers=None):
     key = url.split("://", 1)[1]
     if "riotgames.com" in key:
         assert headers and headers.get("X-Riot-Token"), "Riot calls must send the API key"
+    if any(host in key for host in ("fortnite-api.com", "henrikdev.xyz", "faceit.com")):
+        assert headers and headers.get("Authorization"), "keyed APIs must send the key"
     if key == "en.wikipedia.org/w/api.php" and (params or {}).get("action") == "parse":
         text = MESSI_WIKITEXT if params["page"] == "Lionel Messi" else "No infobox here."
         return {"parse": {"wikitext": text}}
@@ -214,6 +245,82 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(self.rows(prof, "Career")["Points Per Game"], "27.1")
         self.assertEqual(self.rows(prof, "Bio")["Number"], "23")
         self.assertIsNone(p.details("not-a-valid-id"))
+
+    def test_espn_flat_stats_and_core_api_fallback(self):
+        p = providers.ESPNProvider()
+        flat = {"labels": ["GP", "PTS"], "displayValues": ["56", "26.4"]}
+        [block] = p.stat_sections(flat)
+        self.assertEqual(block["rows"], [["GP", "56"], ["PTS", "26.4"]])
+
+        core = "sports.core.api.espn.com/v2/sports/basketball/leagues/nba/athletes/3975"
+        extra = {core: {"displayName": "Stephen Curry", "jersey": "30"},
+                 "site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/3975/overview":
+                     {"statistics": flat}}
+
+        def fake(url, params=None, cache_seconds=None, headers=None):
+            key = url.split("://", 1)[1]
+            if key == "site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/3975":
+                return None  # common v3 bio missing -> use Core API
+            return extra[key]
+        with mock.patch.object(providers, "get_json", side_effect=fake):
+            prof = p.details("basketball/nba/3975")
+        self.assertEqual(prof["name"], "Stephen Curry")
+        self.assertEqual(self.rows(prof, "Current season")["PTS"], "26.4")
+
+    def test_espn_search_v2_fallback(self):
+        v2 = {"results": [{"type": "team", "contents": []}, {"type": "player", "contents": [
+            {"displayName": "Patrick Mahomes", "uid": "s:20~l:28~a:3139477",
+             "subtitle": "Kansas City Chiefs", "image": {"default": "https://example.com/pm.png"}}]}]}
+
+        def fake(url, params=None, cache_seconds=None, headers=None):
+            return v2 if url.endswith("/search/v2") else {"items": []}
+        with mock.patch.object(providers, "get_json", side_effect=fake):
+            [hit] = providers.ESPNProvider().search("mahomes")
+        self.assertEqual(hit["id"], "football/nfl/3139477")
+        self.assertEqual(hit["category"], "American football (NFL)")
+
+    def test_overwatch(self):
+        p = providers.OverwatchProvider()
+        [hit] = p.search("TeKrop")
+        self.assertEqual(hit["id"], "TeKrop-2217")
+        self.assertEqual(p.search("two words"), [])
+        prof = p.details("TeKrop-2217")
+        self.assertEqual(self.rows(prof, "Competitive rank"), {"Damage (PC)": "Diamond 2"})
+        overall = self.rows(prof, "All heroes")
+        self.assertEqual(overall["Win rate"], "55.0%")
+        self.assertEqual(overall["Hours played"], 100.0)
+        self.assertEqual(list(self.rows(prof, "Most played heroes")), ["Soldier 76", "Cassidy"])
+
+    def test_keyed_game_providers_off_without_keys(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            for cls in (providers.FortniteProvider, providers.ValorantProvider, providers.FaceitProvider):
+                self.assertFalse(cls().enabled(), cls.__name__)
+
+    def test_fortnite(self):
+        with mock.patch.dict(os.environ, {"FORTNITE_API_KEY": "k"}):
+            p = providers.FortniteProvider()
+            [hit] = p.search("Ninja")
+            prof = p.details(hit["id"])
+        self.assertEqual(self.rows(prof, "Overall")["K/D"], 7.14)
+        self.assertEqual(self.rows(prof, "Battle pass")["Level"], 120)
+
+    def test_valorant(self):
+        with mock.patch.dict(os.environ, {"HENRIK_API_KEY": "k"}):
+            p = providers.ValorantProvider()
+            self.assertEqual(p.search("TenZ"), [])
+            [hit] = p.search("TenZ#0505")
+            prof = p.details(hit["id"])
+        self.assertEqual(hit["id"], "na/TenZ#0505")
+        self.assertEqual(self.rows(prof, "Competitive")["Current rank"], "Radiant")
+
+    def test_faceit(self):
+        with mock.patch.dict(os.environ, {"FACEIT_API_KEY": "k"}):
+            p = providers.FaceitProvider()
+            [hit] = p.search("s1mple")
+            prof = p.details(hit["id"])
+        self.assertEqual(hit["subtitle"], "Level 10 · UA")
+        self.assertEqual(self.rows(prof, "Lifetime CS2")["K/D"], "1.45")
+        self.assertEqual(self.rows(prof, "FACEIT rank")["Elo"], 3500)
 
     def test_riot_disabled_without_key(self):
         with mock.patch.dict(os.environ, {}, clear=True):

@@ -12,34 +12,49 @@ python -m unittest discover tests   # offline tests, no internet needed
 
 ## What it covers (honestly)
 
+On by default (free, no key):
+
 | Source | What you get | Limits |
 |---|---|---|
 | MLB Stats API | Baseball: career + latest season hitting/pitching | MLB only |
 | NHL API | Hockey: current season, career, playoffs | NHL only |
-| ESPN | NBA, WNBA, NFL, college sports, some soccer: season + career stat tables | **Unofficial, undocumented API**; ESPN can change or block it at any time. Soccer often has no stat table |
+| ESPN | NBA, WNBA, NFL, college sports, some soccer: stat tables | **Unofficial, undocumented API**; ESPN can change or block it at any time. Soccer often has no stat table |
 | OpenDota | Dota 2: win rate, rank, top heroes | Search covers **pro players only** |
-| Riot Games API | League of Legends: rank, LP, win rate, top champions | **Off unless `RIOT_API_KEY` is set**; needs an exact Riot ID like `Faker#KR1`; dev keys expire every 24h |
+| OverFast | Overwatch 2: ranks, win rate, KDA, per-role and top-hero stats | Search by BattleTag name; private profiles show rank only |
 | Chess.com | Ratings and W/L/D per time control | Needs the **exact username** |
 | Lichess | Ratings per variant, overall record | Fuzzy username search |
-| Wikipedia | Anyone with a page (tennis, F1, boxing, cricket, CS/LoL pros, footballers…): career numbers from the infobox, plus club/international apps & goals | Hand-edited, can be out of date; infobox layouts vary so some fields come out messy |
+| Wikipedia | Anyone with a page (tennis, F1, boxing, cricket, esports pros, footballers…): infobox career numbers, club/international apps & goals | Hand-edited, can be out of date; infobox layouts vary |
 | TheSportsDB | Profiles across most sports | Free tier = **profile only, no stats** |
 
-**Still not covered:** amateur players in most games, Valorant, Fortnite, CS2
-match stats, Rocket League, Overwatch, and anyone without a Wikipedia page.
-Those need game-specific APIs (often paid or key-based). To add one, write a
-new `Provider` subclass in `providers.py` with `search()` and `details()`
-(and `enabled()` if it needs a key), then add it to `PROVIDERS`.
+Off until you add a free key (each switches itself on when its variable is set):
 
-### Optional: League of Legends
-
-Get a free development key at https://developer.riotgames.com, then:
+| Source | Game | Env variable | Get a key | Search with |
+|---|---|---|---|---|
+| Riot Games API | League of Legends | `RIOT_API_KEY` (+ `RIOT_REGION`, `RIOT_PLATFORM`) | developer.riotgames.com (dev keys expire every 24h) | `Name#TAG` |
+| HenrikDev | Valorant | `HENRIK_API_KEY` | api.henrikdev.xyz/dashboard | `Name#TAG` |
+| Fortnite-API | Fortnite | `FORTNITE_API_KEY` | dash.fortnite-api.com | exact Epic name |
+| FACEIT | Counter-Strike 2 | `FACEIT_API_KEY` | developers.faceit.com | FACEIT nickname |
 
 ```
-export RIOT_API_KEY=RGAPI-...
-export RIOT_REGION=europe     # americas (default) / europe / asia
-export RIOT_PLATFORM=euw1     # na1 (default) / euw1 / kr / ...
+export FACEIT_API_KEY=...   # etc.
 python app.py
 ```
+
+### What has and hasn't been checked
+
+The code was built in a sandbox with no access to these APIs, and all tests use
+fake responses. Field names for **OverFast** were checked against its source code
+on GitHub, and **ESPN** against a community reference (which led to fallbacks
+for both the flat and split stat layouts). **Fortnite, Valorant, FACEIT, Riot,
+MLB, NHL, OpenDota, Chess.com, Lichess, TheSportsDB and Wikipedia** were written
+from knowledge of their docs and have *not* been checked against a live
+response. If a source shows as "unavailable" or empty, that's the first place
+to look.
+
+**Still not covered:** Rocket League, Apex, Call of Duty, amateur players in
+most traditional sports, and anyone without a Wikipedia page. To add a source,
+write a new `Provider` subclass in `providers.py` with `search()` and
+`details()` (and `enabled()` if it needs a key), then add it to `PROVIDERS`.
 
 ## How it works
 
