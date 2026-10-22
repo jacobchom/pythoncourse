@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Stats Search</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Player Stats Search</h1>
+    <p class="tagline">Search players in sports and esports and see their stats.</p>
+    <form id="search-form" autocomplete="off">
+      <input id="q" name="q" type="search" placeholder="Try: Aaron Judge, McDavid, Miracle, Hikaru, Messi…" autofocus>
+      <button type="submit">Search</button>
+    </form>
+    <p class="sources">Sources:
+      {% for p in providers %}<span class="chip">{{ p.label }}{% if not p.has_stats %}*{% endif %}</span>{% endfor %}
+      <br><small>* profile / bio only, not detailed stats</small>
+    </p>
+  </header>
+
+  <main>
+    <section id="status" aria-live="polite"></section>
+    <section id="results" class="grid"></section>
+    <section id="detail" hidden></section>
+  </main>
+
+  <footer>
+    <p>Chess.com needs an <em>exact</em> username. Dota 2 search covers pro players only.
+       NBA, NFL, football (soccer), League of Legends and Valorant don't have free, key-less stats APIs,
+       so those players come back as profiles from TheSportsDB or Wikipedia.</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
