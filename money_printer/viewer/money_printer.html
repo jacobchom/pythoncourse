@@ -1,0 +1,323 @@
+<title>Money Printer Prop</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one wide stage for the live model, controls under it, then build notes in two columns. */
+:root {
+  --bg: #eef1ee;
+  --stage: #dfe5e1;
+  --fg: #17211d;
+  --muted: #56645d;
+  --line: #c4cec8;
+  --accent: #1d6b4f;
+  --accent-fg: #ffffff;
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1513; --stage: #18211e; --fg: #e4ebe7; --muted: #95a59d;
+    --line: #2c3833; --accent: #4fbf91; --accent-fg: #0b1411; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1513; --stage: #18211e; --fg: #e4ebe7; --muted: #95a59d;
+  --line: #2c3833; --accent: #4fbf91; --accent-fg: #0b1411; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 20px; }
+header h1 { font-family: var(--display); font-size: clamp(28px, 4vw, 40px); margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
+.stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 10; max-width: 100%; max-height: 72vh; width: 100%; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.readout { position: absolute; left: 12px; top: 12px; font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; display: grid; gap: 2px; pointer-events: none; }
+.readout b { color: var(--accent); font-weight: 500; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.tag { position: absolute; transform: translate(-50%, -50%); font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; background: var(--fg); color: var(--bg); padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-family: var(--mono); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: 600 14px var(--body); border: 1px solid var(--line); background: var(--bg); color: var(--fg); padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+button[aria-pressed="true"], button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.speed { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; margin-left: auto; }
+.speed input { accent-color: var(--accent); width: 110px; }
+.hint { color: var(--muted); font-size: 13px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.cols > section { min-width: 0; }
+h2 { font-family: var(--display); font-size: 20px; margin: 0 0 10px; }
+ol, ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td, th { text-align: left; padding: 7px 8px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tablebox { overflow-x: auto; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } .speed { margin-left: 0; } .stage { aspect-ratio: 4 / 5; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Money Printer Prop</h1>
+    <p>Blank paper goes in the front, a real note comes out the back. Every part is 3D printed. Drag to orbit, scroll or pinch to zoom.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="loading" id="loading">Loading parts…</div>
+    <div class="readout" aria-live="off">
+      <span>State <b id="r-state">idle</b></span>
+      <span>Crank turns <b id="r-turns">0.0</b> / 6.4</span>
+      <span>Pusher travel <b id="r-mm">0</b> / 77 mm</span>
+    </div>
+    <div class="labels" id="labels"></div>
+  </div>
+
+  <div class="controls">
+    <button id="play" class="primary">Pause</button>
+    <button id="restart">Restart</button>
+    <button id="xray" aria-pressed="true">See-through case</button>
+    <button id="lid" aria-pressed="true">Show lid</button>
+    <button id="tags" aria-pressed="true">Labels</button>
+    <label class="speed" for="spd">Speed <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1"></label>
+  </div>
+
+  <div class="cols">
+    <section>
+      <h2>How the trick works</h2>
+      <ol>
+        <li>Lift the lid and lay a note on the hidden tray, pushed back against the exit slot. Put the lid back.</li>
+        <li>Push a note-sized piece of paper into the front slot. Inside, fins on the lid force it down a ramp into a pocket under the tray.</li>
+        <li>Turn the crank wheel about 6½ times. The lead screw drives a nut carriage, and its thin pusher bar slides the note out of the back slot.</li>
+        <li>Both slots are at exactly the same height (14.2 to 17.0 mm), so it looks like one sheet going straight through.</li>
+        <li>To reset, turn the wheel the other way, lift the lid and take the paper out from under the tray.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Parts to print</h2>
+      <div class="tablebox">
+      <table>
+        <thead><tr><th>Part</th><th>Size (mm)</th><th>Print it</th></tr></thead>
+        <tbody>
+          <tr><td>Base</td><td class="num">200 × 140 × 36</td><td>Open side up</td></tr>
+          <tr><td>Tray</td><td class="num">195 × 107 × 2.5</td><td>Flat</td></tr>
+          <tr><td>Lid</td><td class="num">200 × 140 × 33</td><td>Upside down, fins up</td></tr>
+          <tr><td>Screw + crank</td><td class="num">32 × 32 × 148</td><td>Standing, wheel on bed, with brim</td></tr>
+          <tr><td>Carriage + pusher</td><td class="num">190 × 18 × 30</td><td>Standing, pusher bar on bed</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="hint">Assembly: drop the tray onto its rails, spin the carriage onto the screw from the back end, lower the screw into the wall notches, press the lid on. No glue, rods or rubber bands.</p>
+    </section>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+
+// model constants (mm), matching make_money_printer.py
+const T = 2.4, SLOT_Z0 = 14.2, TRAY_TOP = 14.5, RAMP_END = 30;
+const SCREW_X = 188, SCREW_Z = 23.5, LEAD = 12, P0 = 60.3, TRAVEL = 77.0;
+const NOTE_W = 75, NOTE_L = 150, NOTE_X0 = 14;
+
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+stage.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 1, 3000);
+camera.position.set(250, 250, 330);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 10, 0);
+controls.enableDamping = true;
+controls.minDistance = 150; controls.maxDistance = 900;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445048, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.8); sun.position.set(200, 400, 250); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6); fill.position.set(-300, 150, -200); scene.add(fill);
+
+// model space is Z-up mm; this group converts to three's Y-up and centres it
+const model = new THREE.Group();
+model.rotation.x = -Math.PI / 2;
+model.position.set(-100, 0, 70);
+scene.add(model);
+
+const grid = new THREE.GridHelper(420, 21, 0x7f8f87, 0x7f8f87);
+grid.material.transparent = true; grid.material.opacity = 0.18; grid.position.y = -0.2;
+scene.add(grid);
+
+const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.05, ...extra });
+const M = {
+  base: mat(0x56677a), lid: mat(0x56677a), tray: mat(0xbfc8c3),
+  screw: mat(0xc58b3a, { metalness: 0.3, roughness: 0.4 }), carriage: mat(0x2e8f7c),
+};
+
+// note + paper textures (generic prop artwork, not a real banknote design)
+function canvasTex(draw) {
+  const c = document.createElement("canvas"); c.width = 600; c.height = 300;
+  draw(c.getContext("2d"), c.width, c.height);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+const noteTex = canvasTex((g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, "#2f7a55"); gr.addColorStop(1, "#7bb38c");
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 8; g.strokeRect(16, 16, w - 32, h - 32);
+  g.fillStyle = "rgba(255,255,255,.9)"; g.font = "bold 150px Georgia, serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText("£", w / 2, h / 2 + 8);
+  g.font = "bold 34px monospace"; g.fillText("PROP", 90, 60); g.fillText("PROP", w - 90, h - 56);
+});
+const paperTex = canvasTex((g, w, h) => {
+  g.fillStyle = "#fbfbf8"; g.fillRect(0, 0, w, h);
+  g.fillStyle = "#c9ccc6"; for (let y = 40; y < h - 20; y += 26) g.fillRect(40, y, w - 80 - (y * 7) % 160, 7);
+});
+const noteMat = new THREE.MeshStandardMaterial({ map: noteTex, side: THREE.DoubleSide, roughness: 0.7 });
+const paperMat = new THREE.MeshStandardMaterial({ map: paperTex, side: THREE.DoubleSide, roughness: 0.9 });
+
+// note: flat sheet that rides on the tray
+const note = new THREE.Mesh(new THREE.PlaneGeometry(NOTE_L, NOTE_W), noteMat);
+model.add(note);
+
+// paper: strip that follows the slot -> ramp -> pocket path
+const SEG = 80;
+const paperGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array((SEG + 1) * 2 * 3), pUv = new Float32Array((SEG + 1) * 2 * 2), pIdx = [];
+for (let i = 0; i <= SEG; i++) {
+  pUv.set([0, i / SEG, 1, i / SEG], i * 4);
+  if (i < SEG) { const a = i * 2; pIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+}
+paperGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+paperGeo.setAttribute("uv", new THREE.BufferAttribute(pUv, 2));
+paperGeo.setIndex(pIdx);
+const paper = new THREE.Mesh(paperGeo, paperMat); paper.frustumCulled = false;
+model.add(paper);
+
+const rampLen = Math.hypot(RAMP_END - T, SLOT_Z0 - 2.8);
+function pathPoint(d) {             // distance along paper route -> [y, z]
+  const zs = SLOT_Z0 + 0.6;
+  if (d <= T) return [d, zs];
+  if (d <= T + rampLen) { const k = (d - T) / rampLen; return [T + k * (RAMP_END - T), zs + k * (3.0 - zs)]; }
+  return [RAMP_END + (d - T - rampLen), 3.0];
+}
+function setPaper(head) {
+  for (let i = 0; i <= SEG; i++) {
+    const [y, z] = pathPoint(head - NOTE_W * (1 - i / SEG));
+    pPos.set([NOTE_X0, y, z, NOTE_X0 + NOTE_L, y, z], i * 6);
+  }
+  paperGeo.attributes.position.needsUpdate = true;
+  paperGeo.computeVertexNormals();
+}
+
+// load parts
+const loader = new STLLoader();
+const parts = {};
+const screwPivot = new THREE.Group(); screwPivot.position.set(SCREW_X, 0, SCREW_Z); model.add(screwPivot);
+const carriageGroup = new THREE.Group(); model.add(carriageGroup);
+await Promise.all(["base", "tray", "lid", "screw", "carriage"].map(name =>
+  loader.loadAsync(`${name}.stl`).then(geo => {
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, M[name]);
+    parts[name] = mesh;
+    if (name === "screw") { mesh.position.set(-SCREW_X, 0, -SCREW_Z); screwPivot.add(mesh); }
+    else if (name === "carriage") carriageGroup.add(mesh);
+    else model.add(mesh);
+  })
+)).catch(err => { document.getElementById("loading").textContent = "Could not load the model files. Reload the page to try again."; throw err; });
+document.getElementById("loading").hidden = true;
+
+// UI state
+const ui = { playing: !matchMedia("(prefers-reduced-motion: reduce)").matches, xray: true, lid: true, tags: true, speed: 1 };
+const btn = id => document.getElementById(id);
+function applyLook() {
+  for (const k of ["base", "lid"]) {
+    const m = M[k]; m.transparent = ui.xray; m.opacity = ui.xray ? (k === "lid" ? 0.18 : 0.3) : 1; m.depthWrite = !ui.xray; m.needsUpdate = true;
+  }
+  parts.lid.visible = ui.lid;
+  btn("xray").setAttribute("aria-pressed", ui.xray); btn("lid").setAttribute("aria-pressed", ui.lid);
+  btn("tags").setAttribute("aria-pressed", ui.tags);
+  btn("play").textContent = ui.playing ? "Pause" : "Play";
+  labelsEl.hidden = !ui.tags;
+}
+btn("play").onclick = () => { ui.playing = !ui.playing; applyLook(); };
+btn("restart").onclick = () => { clock = 0; ui.playing = true; applyLook(); };
+btn("xray").onclick = () => { ui.xray = !ui.xray; applyLook(); };
+btn("lid").onclick = () => { ui.lid = !ui.lid; applyLook(); };
+btn("tags").onclick = () => { ui.tags = !ui.tags; applyLook(); };
+btn("spd").oninput = e => { ui.speed = +e.target.value; };
+
+// floating labels anchored to model points
+const labelsEl = document.getElementById("labels");
+const tagDefs = [
+  ["Paper in", () => [90, -18, 22]],
+  ["Money out", () => [90, 150 + Math.max(0, noteY - 60) * 0.5, 22]],
+  ["Crank", () => [SCREW_X, -12, SCREW_Z + 22]],
+  ["Hidden pocket", () => [60, 90, 6]],
+  ["Pusher", () => [120, P0 + noteY - 4, 26]],
+];
+const tagEls = tagDefs.map(([text]) => { const s = document.createElement("span"); s.className = "tag"; s.textContent = text; labelsEl.append(s); return s; });
+let noteY = 0;
+const v = new THREE.Vector3();
+function placeTags() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  tagDefs.forEach(([, at], i) => {
+    v.set(...at()); model.localToWorld(v); v.project(camera);
+    tagEls[i].style.left = `${(v.x * 0.5 + 0.5) * w}px`; tagEls[i].style.top = `${(-v.y * 0.5 + 0.5) * h}px`;
+  });
+}
+
+// animation timeline (seconds): idle, print, hold, reset
+const IDLE = 1.2, PRINT = 6.5, HOLD = 1.8, RESET = 1.4, CYCLE = IDLE + PRINT + HOLD + RESET;
+let clock = 0;
+const ease = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+function pose(t) {
+  let f, state;
+  if (t < IDLE) { f = 0; state = "loaded"; }
+  else if (t < IDLE + PRINT) { f = ease((t - IDLE) / PRINT); state = "printing"; }
+  else if (t < IDLE + PRINT + HOLD) { f = 1; state = "printed"; }
+  else { f = 1 - ease((t - IDLE - PRINT - HOLD) / RESET); state = "resetting"; }
+  const resetting = state === "resetting";
+  const travel = f * TRAVEL;
+  screwPivot.rotation.y = -(travel / LEAD) * Math.PI * 2;
+  carriageGroup.position.y = travel;
+  // note rides the pusher out; during reset it is hidden (you take it)
+  noteY = travel;
+  note.visible = !resetting;
+  note.position.set(NOTE_X0 + NOTE_L / 2, P0 + NOTE_W / 2 + travel, TRAY_TOP + 0.15);
+  // paper goes in at the same speed; during reset a fresh sheet waits at the slot
+  setPaper(resetting ? 1 : 1 + travel);
+  paper.visible = !resetting || f < 0.02;
+  document.getElementById("r-state").textContent = state;
+  document.getElementById("r-turns").textContent = (travel / LEAD).toFixed(1);
+  document.getElementById("r-mm").textContent = travel.toFixed(0);
+}
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage); resize();
+applyLook();
+
+let last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (ui.playing) clock = (clock + dt * ui.speed) % CYCLE;
+  pose(clock);
+  controls.update();
+  renderer.render(scene, camera);
+  if (ui.tags) placeTags();
+});
+</script>

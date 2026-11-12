@@ -1,152 +1,222 @@
-"""Fake 'money printer' magic prop. Generates printable STLs.
+"""Fake 'money printer' magic prop, v2. All parts 3D printed, no glue, no hardware.
 
-How it works: blank paper pushed into the FRONT slot drops into a hidden
-lower pocket. A real note pre-loaded on a hidden tray sits under a rubber-
-banded roller; turning the crank feeds the note out of the BACK slot.
+How it works
+  * FRONT slot and BACK slot are at the same height.
+  * Paper pushed into the front slot hits a ramp and slides DOWN into a
+    hidden pocket under the tray.
+  * A real note lies on the tray. Turning the crank wheel spins a lead screw;
+    a nut carriage on the screw drags a thin pusher bar along the tray,
+    shoving the note out of the back slot.
 
-Run:  python3 make_money_printer.py   -> writes STLs next to this file.
-All sizes in mm. Sized for notes up to 156 x 77 (all UK notes, US $).
+Run:  python3 make_money_printer.py
+Writes print-ready STLs to ./print and world-positioned meshes to ./viewer.
+All sizes in mm. Fits notes up to 166 x 77 (every UK note, US dollars).
 """
 import os
 import numpy as np
 import trimesh
 from manifold3d import Manifold, CrossSection
 
-OUT = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.abspath(__file__))
+PRINT = os.path.join(HERE, "print")
+VIEW = os.path.join(HERE, "viewer")
 
-# ---- main dimensions -------------------------------------------------------
-W, D, H = 180.0, 100.0, 32.0      # base outer size (X wide, Y deep, Z tall)
-T = 2.4                           # wall thickness
+# ---- key dimensions --------------------------------------------------------
+W, D, H = 200.0, 140.0, 36.0     # base outside: X wide, Y deep, Z tall
+T = 2.4                          # wall
 FLOOR = 2.0
-SLOT_W = 166.0                    # slot width (note long edge goes first)
-ENTRY_Z = (3.0, 7.0)              # front slot: paper goes in, drops to pocket
-RAIL_TOP = 12.0                   # tray rests on side rails at this height
+CLR = 0.3                        # general print clearance
+NOTE_X1 = 176.0                  # note area is x = T .. NOTE_X1
+SLOT_X = (6.0, 172.0)            # both slots: 166 wide
+SLOT_Z = (14.2, 17.0)            # both slots: SAME height
+RAIL_TOP = 12.0
 TRAY_T = 2.5
-TRAY_TOP = RAIL_TOP + TRAY_T      # 14.5
-EXIT_Z = (TRAY_TOP - 0.5, TRAY_TOP + 3.5)  # back slot: note comes out
-ROLL_R = 8.0                      # roller radius
-ROLL_Y = D - 12.0                 # roller axis Y (near the exit)
-ROLL_Z = TRAY_TOP + ROLL_R        # roller just touches tray; bands add grip
-ROD_D = 6.0                       # 6 mm wooden dowel / steel rod as axle
-CLR = 0.3                         # print clearance
+TRAY_TOP = RAIL_TOP + TRAY_T     # 14.5 (note and carriage slide on this)
+RAMP_END_Y = 30.0                # paper ramp runs from front wall to here
+FIN_GAP = 2.0                    # lid fins sit this far above the tray
+BAR_H = 1.2                      # pusher bar height
+
+SCREW_X, SCREW_Z = 188.0, 23.5   # lead-screw axis (runs along Y)
+R_MAJ, R_MIN = 6.0, 4.5          # thread radii
+STARTS, LEAD = 2, 12.0           # 2-start thread, 12 mm per turn
+NUT_CLR = 0.4
+JOURNAL_R = 4.0
+
+NOTE_MAX_W = 77.0
+P0 = D - T - NOTE_MAX_W - 0.3    # pusher start (front face of note) = 60.3
+P1 = D - T - 0.3                 # pusher end = 137.3
+TRAVEL = P1 - P0                 # 77 mm  -> 6.4 turns of the crank
+CAR_LEN = 30.0
+CAR_X = (SCREW_X - 9.3, SCREW_X + 9.3)
 
 
 def box(x0, y0, z0, x1, y1, z1):
     return Manifold.cube([x1 - x0, y1 - y0, z1 - z0]).translate([x0, y0, z0])
 
 
-def cyl_x(r, x0, x1, y, z, n=64):
-    """Cylinder along X."""
-    return (Manifold.cylinder(x1 - x0, r, r, n)
-            .rotate([0, 90, 0]).translate([x0, y, z]))
+def hull(pts):
+    return Manifold.hull_points([list(map(float, p)) for p in pts])
+
+
+def cyl_y(r, y0, y1, x, z, n=64):
+    """Cylinder along +Y from y0 to y1."""
+    return Manifold.cylinder(y1 - y0, r, r, n).rotate([-90, 0, 0]).translate([x, y0, z])
+
+
+def ramp_z(y):
+    return SLOT_Z[0] + (y - T) * (2.6 - SLOT_Z[0]) / (RAMP_END_Y - T)
+
+
+def thread_section(offset=0.0, n=120):
+    pts = []
+    for i in range(n):
+        th = 2 * np.pi * i / n
+        t = (STARTS * th / (2 * np.pi)) % 1.0
+        tri = 1 - 2 * abs(t - 0.5)                    # 0..1..0
+        tri = min(1.0, tri * 1.25)                    # small flat crest
+        r = R_MIN + (R_MAJ - R_MIN) * tri + offset
+        pts.append([r * np.cos(th), r * np.sin(th)])
+    return CrossSection([pts])
+
+
+def threaded_rod(length, offset=0.0):
+    cs = thread_section(offset)
+    div = int(length / 0.5)
+    m = Manifold.extrude(cs, length, div, -360.0 * length / LEAD)
+    return m  # along +Z
 
 
 # ---- base ------------------------------------------------------------------
 def make_base():
     m = box(0, 0, 0, W, D, H) - box(T, T, FLOOR, W - T, D - T, H + 1)
-    sx0 = (W - SLOT_W) / 2
-    # front entry slot (into lower pocket)
-    m -= box(sx0, -1, ENTRY_Z[0], sx0 + SLOT_W, T + 1, ENTRY_Z[1])
-    # back exit slot (level with tray top)
-    m -= box(sx0, D - T - 1, EXIT_Z[0], sx0 + SLOT_W, D + 1, EXIT_Z[1])
-    # side rails the tray sits on (solid from floor: no overhangs)
+    # slots, same height front and back
+    m -= box(SLOT_X[0], -1, SLOT_Z[0], SLOT_X[1], T + 1, SLOT_Z[1])
+    m -= box(SLOT_X[0], D - T - 1, SLOT_Z[0], SLOT_X[1], D + 1, SLOT_Z[1])
+    # left rail + right block hold the tray (solid from floor, no overhangs)
     m += box(T, T, 0, T + 3, D - T, RAIL_TOP)
-    m += box(W - T - 3, T, 0, W - T, D - T, RAIL_TOP)
-    # U-notches in side walls for the axle, open at the top
-    r = ROD_D / 2 + CLR
-    for x0, x1 in [(-1, T + 3.5), (W - T - 3.5, W + 1)]:
-        m -= cyl_x(r, x0, x1, ROLL_Y, ROLL_Z)
-        m -= box(x0, ROLL_Y - r, ROLL_Z, x1, ROLL_Y + r, H + 1)
-    # finger notch on top edge of front wall to lift lid
-    m -= box(W / 2 - 10, -1, H - 3, W / 2 + 10, T + 1, H + 1)
+    m += box(NOTE_X1 - 3, T, 0, W - T, D - T, RAIL_TOP)
+    # paper ramp: slot level down to the pocket floor
+    m += hull([(x, y, z) for x in (T, NOTE_X1) for (y, z) in
+               [(T, 0), (T, SLOT_Z[0]), (RAMP_END_Y, ramp_z(RAMP_END_Y)), (RAMP_END_Y, 0)]])
+    # U-notches for the screw journals (front and back walls), open at top
+    r = JOURNAL_R + CLR
+    for y0, y1 in [(-1, T + 0.01), (D - T - 0.01, D + 1)]:
+        m -= cyl_y(r, y0, y1, SCREW_X, SCREW_Z)
+        m -= box(SCREW_X - r, y0, SCREW_Z, SCREW_X + r, y1, H + 1)
+    # finger notch to lift the lid
+    m -= box(W / 2 - 12, -1, H - 3, W / 2 + 12, T + 1, H + 1)
     return m
 
 
-# ---- hidden tray (sits on rails, separates pocket from note) ---------------
+# ---- tray (hidden floor: note on top, paper pocket underneath) -------------
 def make_tray():
-    x0, x1 = T + CLR, W - T - CLR
-    y0, y1 = T + CLR, D - T - CLR
-    m = box(x0, y0, 0, x1, y1, TRAY_T)
-    # little thumb hole at the front to lift it out
-    m -= Manifold.cylinder(TRAY_T + 2, 7, 7, 48).translate([W / 2, y0 + 10, -1])
+    m = box(T + CLR, RAMP_END_Y + CLR, RAIL_TOP, W - T - CLR, D - T - CLR, TRAY_TOP)
+    m -= Manifold.cylinder(10, 7, 7, 48).translate([90, 42, RAIL_TOP - 1])   # lift hole
     return m
 
 
-# ---- lid --------------------------------------------------------------------
+# ---- lead screw with crank wheel (one piece) -------------------------------
+def make_screw():
+    """Built along +Z from the wheel face, then laid along +Y in world."""
+    parts = []
+    z = 0.0
+    wheel = Manifold.cylinder(5, 16, 16, 96)
+    wheel -= Manifold.cylinder(7, 4.6, 4.6, 48).translate([9.8, 0, -1])     # finger hole
+    for i in range(24):                                                      # grip ridges
+        a = 2 * np.pi * i / 24
+        wheel -= Manifold.cylinder(7, 1.0, 1.0, 16).translate([16.4 * np.cos(a), 16.4 * np.sin(a), -1])
+    parts.append(wheel); z = 5
+    parts.append(Manifold.cylinder(2.7, 6, 6, 64).translate([0, 0, z])); z += 2.7    # stop hub
+    parts.append(Manifold.cylinder(T + 0.6, JOURNAL_R, JOURNAL_R, 64).translate([0, 0, z])); z += T + 0.6
+    parts.append(Manifold.cylinder(2.7, 7.5, 7.5, 64).translate([0, 0, z])); z += 2.7  # inner collar
+    thread_len = (D - T) - (T + 0.3 + 2.7)
+    parts.append(threaded_rod(thread_len).translate([0, 0, z])); z += thread_len
+    parts.append(Manifold.cylinder(T - 0.2, JOURNAL_R, JOURNAL_R, 64).translate([0, 0, z]))
+    m = parts[0]
+    for p in parts[1:]:
+        m += p
+    wheel_face_y = -(5 + 2.7 + 0.3)        # world Y of the wheel's outer face
+    world = m.rotate([-90, 0, 0]).translate([SCREW_X, wheel_face_y, SCREW_Z])
+    return m, world
+
+
+# ---- carriage + pusher bar (one piece) -------------------------------------
+def make_carriage(p=P0):
+    nut_top = SCREW_Z + R_MAJ + NUT_CLR + 2.5
+    car = box(CAR_X[0], p - CAR_LEN, TRAY_TOP + 0.1, CAR_X[1], p, nut_top)
+    nut = threaded_rod(CAR_LEN + 2, NUT_CLR).rotate([-90, 0, 0]).translate([SCREW_X, p - CAR_LEN - 1, SCREW_Z])
+    car -= nut
+    bar = box(SLOT_X[0] + 1, p - 8, TRAY_TOP + 0.1, CAR_X[0] + 1, p, TRAY_TOP + 0.1 + BAR_H)
+    return car + bar
+
+
+# ---- lid -------------------------------------------------------------------
 def make_lid():
-    LT = 3.0
-    m = box(0, 0, 0, W, D, LT)
-    # locating lip that drops inside the walls
-    lip = box(T + CLR, T + CLR, -4, W - T - CLR, D - T - CLR, 0)
-    lip -= box(T + CLR + 1.6, T + CLR + 1.6, -5, W - T - CLR - 1.6, D - T - CLR - 1.6, 1)
-    # gap in lip where the roller lives
-    lip -= box(0, ROLL_Y - ROLL_R - 3, -5, W, D, 1)
-    m += lip
-    # tabs that fill the axle notches and hold the axle down
-    r = ROD_D / 2 + CLR - 0.15
-    tab_bottom = ROLL_Z + ROD_D / 2 + 0.3 - H   # relative to lid underside
-    for x0, x1 in [(0.2, T + 3.3), (W - T - 3.3, W - 0.2)]:
-        m += box(x0, ROLL_Y - r, tab_bottom, x1, ROLL_Y + r, 0)
-    # decorative vent slots on top (looks like a machine)
-    for i in range(6):
-        y = 20 + i * 8
-        m -= box(40, y, 1.2, W - 40, y + 3, LT + 1)
+    m = box(0, 0, H, W, D, H + 3)
+    for i in range(7):                                       # cosmetic grooves
+        y = 30 + i * 9
+        m -= box(30, y, H + 1.8, 150, y + 3, H + 4)
+    # locating lip (left, front, back; right side is left open for the carriage)
+    lip_z = H - 3.5
+    m += box(T + CLR, T + CLR, lip_z, T + CLR + 1.6, D - T - CLR, H)
+    m += box(T + CLR, T + CLR, lip_z, NOTE_X1, T + CLR + 1.6, H)
+    m += box(T + CLR, D - T - CLR - 1.6, lip_z, NOTE_X1, D - T - CLR, H)
+    # fins: steer paper DOWN the ramp, and hold the note flat on the tray
+    for x in np.linspace(8, 169, 9):
+        x0, x1 = x, x + 1.6
+        y0, y1 = T + CLR + 0.2, RAMP_END_Y - 0.4
+        m += hull([(xx, y, z) for xx in (x0, x1) for (y, z) in
+                   [(y0, ramp_z(y0) + 3.2), (y1, ramp_z(y1) + 3.2), (y0, H), (y1, H)]])
+        m += box(x0, RAMP_END_Y - 0.4, TRAY_TOP + FIN_GAP, x1, D - T - CLR, H)
+    # tabs that drop into the wall notches and hold the screw down
+    r = JOURNAL_R + CLR - 0.15
+    tab_bot = SCREW_Z + JOURNAL_R + 0.3
+    for y0, y1 in [(0.2, T), (D - T, D - 0.2)]:
+        m += box(SCREW_X - r, y0, tab_bot, SCREW_X + r, y1, H)
     return m
 
 
-# ---- roller halves (slide onto the 6 mm rod, glue in place) -----------------
-def make_roller_half():
-    L = (W - 2 * T - 2 * 3 - 2 * 1.0) / 2 - 0.5   # fits between rails
-    m = Manifold.cylinder(L, ROLL_R, ROLL_R, 96)
-    m -= Manifold.cylinder(L + 2, ROD_D / 2 + 0.15, ROD_D / 2 + 0.15, 48).translate([0, 0, -1])
-    # grooves for rubber bands (bands give grip on the note)
-    for z in np.linspace(12, L - 12, 3):
-        ring = (Manifold.cylinder(4, ROLL_R + 1, ROLL_R + 1, 96)
-                - Manifold.cylinder(4, ROLL_R - 1.0, ROLL_R - 1.0, 96))
-        m -= ring.translate([0, 0, z - 2])
-    return m, L
-
-
-# ---- crank ------------------------------------------------------------------
-def make_crank():
-    hub_r, arm_l, th = 7.0, 35.0, 6.0
-    m = Manifold.cylinder(th + 4, hub_r, hub_r, 64)
-    m += box(0, -5, 0, arm_l, 5, th)
-    m += Manifold.cylinder(th, 6, 6, 64).translate([arm_l, 0, 0])
-    m -= Manifold.cylinder(th + 6, ROD_D / 2 + 0.1, ROD_D / 2 + 0.1, 48).translate([0, 0, -1])
-    # handle peg
-    m += Manifold.cylinder(18, 4, 4, 48).translate([arm_l, 0, th])
-    return m
-
-
-def save(m, name):
+def save(m, folder, name):
+    os.makedirs(folder, exist_ok=True)
     mesh = m.to_mesh()
     t = trimesh.Trimesh(vertices=mesh.vert_properties[:, :3], faces=mesh.tri_verts)
-    path = os.path.join(OUT, name)
-    t.export(path)
-    print(f"{name}: {t.bounds[1] - t.bounds[0]} mm, watertight={t.is_watertight}")
+    t.export(os.path.join(folder, name))
     return t
 
 
+def on_bed(m):
+    b = m.bounding_box()
+    return m.translate([-b[0], -b[1], -b[2]])
+
+
 if __name__ == "__main__":
-    base = make_base()
-    tray = make_tray()
-    lid = make_lid()
-    roller, RL = make_roller_half()
-    crank = make_crank()
+    import manifold3d  # noqa
+    base, tray, lid = make_base(), make_tray(), make_lid()
+    screw_local, screw_world = make_screw()
+    car = make_carriage()
 
-    save(base, "base.stl")
-    save(tray, "tray.stl")
-    save(lid.rotate([180, 0, 0]), "lid.stl")            # print top-down
-    save(roller, "roller_half_x2.stl")                  # print 2, standing up
-    save(crank, "crank.stl")
+    # interference checks in the assembled (start) position
+    checks = {
+        "screw vs base": screw_world ^ base, "screw vs tray": screw_world ^ tray,
+        "screw vs lid": screw_world ^ lid, "screw vs carriage": screw_world ^ car,
+        "carriage vs base": car ^ base, "carriage vs lid": car ^ lid,
+        "carriage(end) vs lid": make_carriage(P1) ^ lid,
+        "carriage(end) vs base": make_carriage(P1) ^ base,
+        "tray vs base": tray ^ base, "lid vs base": lid ^ base, "lid vs tray": lid ^ tray,
+    }
+    for k, v in checks.items():
+        print(f"overlap {k:24s} {v.volume():8.2f} mm3")
 
-    # assembled preview (lid lifted 25 mm so you can see inside)
-    asm = base + tray.translate([0, 0, RAIL_TOP])
-    gap = (W - 2 * RL) / 2
-    for i in range(2):
-        asm += roller.rotate([0, 90, 0]).translate([gap + i * (RL + 0.5) - 0.25 * 0, ROLL_Y, ROLL_Z])
-    asm += cyl_x(ROD_D / 2, -3, W + 14, ROLL_Y, ROLL_Z, 32)  # the rod
-    asm += crank.rotate([0, 90, 0]).translate([W + 4, ROLL_Y, ROLL_Z])
-    asm += lid.translate([0, 0, H + 25])
-    save(asm, "preview_assembled.stl")
+    # print-ready (oriented for the bed)
+    for m, n in [(base, "base.stl"), (on_bed(tray), "tray.stl"),
+                 (on_bed(lid.rotate([180, 0, 0])), "lid.stl"),
+                 (on_bed(screw_local), "screw_with_crank.stl"),
+                 (on_bed(car.rotate([-90, 0, 0])), "carriage_pusher.stl")]:
+        t = save(m, PRINT, n)
+        print(f"{n:24s} {np.round(t.extents,1)} watertight={t.is_watertight}")
+
+    # world-positioned for the 3D viewer
+    for m, n in [(base, "base.stl"), (tray, "tray.stl"), (lid, "lid.stl"),
+                 (screw_world, "screw.stl"), (car, "carriage.stl")]:
+        save(m, VIEW, n)
+    print(f"travel {TRAVEL:.1f} mm = {TRAVEL/LEAD:.2f} crank turns; P0={P0}")
