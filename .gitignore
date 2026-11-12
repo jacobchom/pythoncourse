@@ -170,3 +170,4 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 money_printer/viewer/*.stl.txt
+money_maker/viewer/*.stl.txt
