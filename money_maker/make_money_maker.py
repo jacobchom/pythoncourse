@@ -116,13 +116,14 @@ def make_knob():
 
 # ---- paper trays (print 2; front and back are the same part) ----------------
 def make_tray(front=True):
-    y_tip, y_end = 17.0, 75.0
+    """Short guide lip that clips into the side plates (no legs)."""
+    y_tip, y_end = 17.0, 42.0
     m = box(0.3, y_tip, NIP - TRAY_T, INNER - 0.3, y_end, NIP)
-    m += box(-3.9, 18.0, NIP - TRAY_T, 0.3, 22.0, NIP)
+    m += box(-3.9, 18.0, NIP - TRAY_T, 0.3, 22.0, NIP)                   # tabs into plates
     m += box(INNER - 0.3, 18.0, NIP - TRAY_T, INNER + 3.9, 22.0, NIP)
-    m += box(INNER / 2 - 25, y_end - 6, NIP - TRAY_T - 1.5, INNER / 2 + 25, y_end, NIP)  # stiff lip
-    for x0 in (6, INNER - 12):                                           # legs
-        m += box(x0, y_end - 6, 0, x0 + 6, y_end, NIP - TRAY_T)
+    m += box(0.3, y_end - 3, NIP - TRAY_T - 4, INNER - 0.3, y_end, NIP)  # stiffening edge
+    m += box(0.3, y_tip, NIP - TRAY_T - 4, 3.3, y_end, NIP)               # side ribs against the plates
+    m += box(INNER - 3.3, y_tip, NIP - TRAY_T - 4, INNER - 0.3, y_end, NIP)
     if front:
         m = m.mirror([0, 1, 0])
     return m
