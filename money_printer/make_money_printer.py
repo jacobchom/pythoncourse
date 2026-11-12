@@ -8,10 +8,14 @@ How it works
     a nut carriage on the screw drags a thin pusher bar along the tray,
     shoving the note out of the back slot.
 
-Run:  python3 make_money_printer.py
-Writes print-ready STLs to ./print and world-positioned meshes to ./viewer.
+Multi-note: notes are loaded end to end on the tray. Each print, crank until
+the front note pops out (about 6.6 turns); the pusher shoves the whole row.
+
+Run:  python3 make_money_printer.py [NOTES]      (default 3)
+Writes print-ready STLs to ./print_<N>notes and world meshes to ./viewer.
 All sizes in mm. Fits notes up to 166 x 77 (every UK note, US dollars).
 """
+import sys
 import os
 import numpy as np
 import trimesh
@@ -22,7 +26,11 @@ PRINT = os.path.join(HERE, "print")
 VIEW = os.path.join(HERE, "viewer")
 
 # ---- key dimensions --------------------------------------------------------
-W, D, H = 200.0, 140.0, 36.0     # base outside: X wide, Y deep, Z tall
+NOTES = int(sys.argv[1]) if len(sys.argv) > 1 and __name__ == "__main__" else 3
+NOTE_MAX_W = 77.0
+P0 = 38.5                        # pusher start (rear edge of the last note)
+W, H = 200.0, 36.0
+D = P0 + NOTES * NOTE_MAX_W + 0.3 + 2.4   # deeper box: notes sit end to end
 T = 2.4                          # wall
 FLOOR = 2.0
 CLR = 0.3                        # general print clearance
@@ -42,10 +50,10 @@ STARTS, LEAD = 2, 12.0           # 2-start thread, 12 mm per turn
 NUT_CLR = 0.4
 JOURNAL_R = 4.0
 
-NOTE_MAX_W = 77.0
-P0 = D - T - NOTE_MAX_W - 0.3    # pusher start (front face of note) = 60.3
-P1 = D - T - 0.3                 # pusher end = 137.3
-TRAVEL = P1 - P0                 # 77 mm  -> 6.4 turns of the crank
+P1 = D - T - 0.3                 # pusher end, against the back wall
+TRAVEL = P1 - P0                 # NOTES x 77 mm in total
+STEP = NOTE_MAX_W + T            # travel per print: clears the wall fully
+SEG_MAX = 145.0                  # screw is printed in pieces no taller than this
 CAR_LEN = 30.0
 CAR_X = (SCREW_X - 9.3, SCREW_X + 9.3)
 
@@ -111,6 +119,8 @@ def make_base():
 # ---- tray (hidden floor: note on top, paper pocket underneath) -------------
 def make_tray():
     m = box(T + CLR, RAMP_END_Y + CLR, RAIL_TOP, W - T - CLR, D - T - CLR, TRAY_TOP)
+    # strip beside the ramp so the carriage has a floor all the way forward
+    m += box(NOTE_X1 + CLR, T + CLR, RAIL_TOP, W - T - CLR, RAMP_END_Y + 1, TRAY_TOP)
     m -= Manifold.cylinder(10, 7, 7, 48).translate([90, 42, RAIL_TOP - 1])   # lift hole
     return m
 
@@ -137,14 +147,31 @@ def make_screw():
         m += p
     wheel_face_y = -(5 + 2.7 + 0.3)        # world Y of the wheel's outer face
     world = m.rotate([-90, 0, 0]).translate([SCREW_X, wheel_face_y, SCREW_Z])
-    return m, world
+    # split into printable pieces joined by keyed pegs (key keeps threads in line)
+    total = z + T - 0.2
+    n = int(np.ceil(total / SEG_MAX))
+    cuts = [total * i / n for i in range(1, n)]
+    pieces, lo = [], -1.0
+    for zc in cuts + [total + 1]:
+        pieces.append(m ^ box(-20, -20, lo, 20, 20, zc))
+        lo = zc
+
+    def key(r, k, h, zb):
+        return (Manifold.cylinder(h, r, r, 48) + box(-k / 2, 0, 0, k / 2, r + 0.8, h)).translate([0, 0, zb])
+    for i, zc in enumerate(cuts):
+        pieces[i] += key(2.2, 1.6, 10, zc)
+        pieces[i + 1] -= key(2.2 + 0.15, 1.6 + 0.3, 10.5, zc - 0.01)
+    return pieces, world
 
 
 # ---- carriage + pusher bar (one piece) -------------------------------------
 def make_carriage(p=P0):
     nut_top = SCREW_Z + R_MAJ + NUT_CLR + 2.5
     car = box(CAR_X[0], p - CAR_LEN, TRAY_TOP + 0.1, CAR_X[1], p, nut_top)
-    nut = threaded_rod(CAR_LEN + 2, NUT_CLR).rotate([-90, 0, 0]).translate([SCREW_X, p - CAR_LEN - 1, SCREW_Z])
+    # start the nut thread in phase with the screw thread (starts at y = 5.4)
+    pitch = LEAD / STARTS
+    y0 = 5.4 + np.floor((p - CAR_LEN - 1 - 5.4) / pitch) * pitch
+    nut = threaded_rod(p + 1 - y0, NUT_CLR).rotate([-90, 0, 0]).translate([SCREW_X, y0, SCREW_Z])
     car -= nut
     bar = box(SLOT_X[0] + 1, p - 8, TRAY_TOP + 0.1, CAR_X[0] + 1, p, TRAY_TOP + 0.1 + BAR_H)
     return car + bar
@@ -190,16 +217,14 @@ def on_bed(m):
 
 
 if __name__ == "__main__":
-    import manifold3d  # noqa
     base, tray, lid = make_base(), make_tray(), make_lid()
-    screw_local, screw_world = make_screw()
+    screw_pieces, screw_world = make_screw()
     car = make_carriage()
 
-    # interference checks in the assembled (start) position
     checks = {
         "screw vs base": screw_world ^ base, "screw vs tray": screw_world ^ tray,
         "screw vs lid": screw_world ^ lid, "screw vs carriage": screw_world ^ car,
-        "carriage vs base": car ^ base, "carriage vs lid": car ^ lid,
+        "carriage vs base": car ^ base, "carriage vs lid": car ^ lid, "carriage vs tray": car ^ tray,
         "carriage(end) vs lid": make_carriage(P1) ^ lid,
         "carriage(end) vs base": make_carriage(P1) ^ base,
         "tray vs base": tray ^ base, "lid vs base": lid ^ base, "lid vs tray": lid ^ tray,
@@ -207,16 +232,19 @@ if __name__ == "__main__":
     for k, v in checks.items():
         print(f"overlap {k:24s} {v.volume():8.2f} mm3")
 
-    # print-ready (oriented for the bed)
-    for m, n in [(base, "base.stl"), (on_bed(tray), "tray.stl"),
-                 (on_bed(lid.rotate([180, 0, 0])), "lid.stl"),
-                 (on_bed(screw_local), "screw_with_crank.stl"),
-                 (on_bed(car.rotate([-90, 0, 0])), "carriage_pusher.stl")]:
-        t = save(m, PRINT, n)
+    out = os.path.join(HERE, f"print_{NOTES}notes")
+    items = [(base, "base.stl"), (on_bed(tray), "tray.stl"),
+             (on_bed(lid.rotate([180, 0, 0])), "lid.stl"),
+             (on_bed(car.rotate([-90, 0, 0])), "carriage_pusher.stl")]
+    for i, p in enumerate(screw_pieces):
+        items.append((on_bed(p), f"screw_part{i + 1}_of_{len(screw_pieces)}.stl"))
+    for m, n in items:
+        t = save(m, out, n)
         print(f"{n:24s} {np.round(t.extents,1)} watertight={t.is_watertight}")
 
-    # world-positioned for the 3D viewer
-    for m, n in [(base, "base.stl"), (tray, "tray.stl"), (lid, "lid.stl"),
-                 (screw_world, "screw.stl"), (car, "carriage.stl")]:
-        save(m, VIEW, n)
-    print(f"travel {TRAVEL:.1f} mm = {TRAVEL/LEAD:.2f} crank turns; P0={P0}")
+    if NOTES == 3:
+        for m, n in [(base, "base.stl"), (tray, "tray.stl"), (lid, "lid.stl"),
+                     (screw_world, "screw.stl"), (car, "carriage.stl")]:
+            save(m, VIEW, n)
+    print(f"box {W:.0f} x {D:.1f} x {H+3:.0f}; travel {TRAVEL:.1f} mm = {TRAVEL/LEAD:.1f} turns; "
+          f"{STEP/LEAD:.1f} turns per note; P0={P0} P1={P1}")

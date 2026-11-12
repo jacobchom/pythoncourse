@@ -66,15 +66,16 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
 <div class="wrap">
   <header>
     <h1>Money Printer Prop</h1>
-    <p>Blank paper goes in the front, a real note comes out the back. Every part is 3D printed. Drag to orbit, scroll or pinch to zoom.</p>
+    <p>Load three notes, then print them one at a time: blank paper goes in the front, a real note comes out the back. Every part is 3D printed. Drag to orbit, scroll or pinch to zoom.</p>
   </header>
 
   <div class="stage" id="stage">
     <div class="loading" id="loading">Loading parts…</div>
     <div class="readout" aria-live="off">
       <span>State <b id="r-state">idle</b></span>
-      <span>Crank turns <b id="r-turns">0.0</b> / 6.4</span>
-      <span>Pusher travel <b id="r-mm">0</b> / 77 mm</span>
+      <span>Note <b id="r-note">1</b> of 3</span>
+      <span>Crank turns <b id="r-turns">0.0</b> / 19.2</span>
+      <span>Pusher travel <b id="r-mm">0</b> / 231 mm</span>
     </div>
     <div class="labels" id="labels"></div>
   </div>
@@ -92,11 +93,12 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
     <section>
       <h2>How the trick works</h2>
       <ol>
-        <li>Lift the lid and lay a note on the hidden tray, pushed back against the exit slot. Put the lid back.</li>
-        <li>Push a note-sized piece of paper into the front slot. Inside, fins on the lid force it down a ramp into a pocket under the tray.</li>
-        <li>Turn the crank wheel about 6½ times. The lead screw drives a nut carriage, and its thin pusher bar slides the note out of the back slot.</li>
-        <li>Both slots are at exactly the same height (14.2 to 17.0 mm), so it looks like one sheet going straight through.</li>
-        <li>To reset, turn the wheel the other way, lift the lid and take the paper out from under the tray.</li>
+        <li>Wind the pusher all the way to the front. Lift the lid and lay three notes flat on the tray, edge to edge, with the first one against the exit slot. Put the lid back.</li>
+        <li>Push a note-sized piece of paper into the front slot. Fins on the lid force it down a ramp into a pocket under the tray.</li>
+        <li>Turn the crank wheel about 6½ times. The screw moves the pusher, which shoves the whole row of notes along one note-width, so the front note slides out of the back slot.</li>
+        <li>Stop as soon as the note is out; the next one is waiting flush with the slot. Repeat for notes two and three. The last one stops 2 mm short, so pull it out.</li>
+        <li>Both slots are at the same height (14.2 to 17.0 mm), so it looks like one sheet going straight through.</li>
+        <li>To reset, wind the wheel back about 19 turns, lift the lid and take the papers out from under the tray.</li>
       </ol>
     </section>
     <section>
@@ -105,15 +107,17 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
       <table>
         <thead><tr><th>Part</th><th>Size (mm)</th><th>Print it</th></tr></thead>
         <tbody>
-          <tr><td>Base</td><td class="num">200 × 140 × 36</td><td>Open side up</td></tr>
-          <tr><td>Tray</td><td class="num">195 × 107 × 2.5</td><td>Flat</td></tr>
-          <tr><td>Lid</td><td class="num">200 × 140 × 33</td><td>Upside down, fins up</td></tr>
-          <tr><td>Screw + crank</td><td class="num">32 × 32 × 148</td><td>Standing, wheel on bed, with brim</td></tr>
+          <tr><td>Base</td><td class="num">200 × 272 × 36</td><td>Open side up</td></tr>
+          <tr><td>Tray</td><td class="num">195 × 267 × 2.5</td><td>Flat</td></tr>
+          <tr><td>Lid</td><td class="num">200 × 272 × 33</td><td>Upside down, fins up</td></tr>
+          <tr><td>Screw part 1 (crank)</td><td class="num">32 × 32 × 150</td><td>Standing, wheel on bed, with brim</td></tr>
+          <tr><td>Screw part 2</td><td class="num">12 × 12 × 140</td><td>Standing, socket end on bed, with brim</td></tr>
           <tr><td>Carriage + pusher</td><td class="num">190 × 18 × 30</td><td>Standing, pusher bar on bed</td></tr>
         </tbody>
       </table>
       </div>
-      <p class="hint">Assembly: drop the tray onto its rails, spin the carriage onto the screw from the back end, lower the screw into the wall notches, press the lid on. No glue, rods or rubber bands.</p>
+      <p class="hint">The 3-note base and lid need a bed at least 210 × 280 mm. A 2-note version (200 × 195 mm) fits a 220 × 220 bed.</p>
+      <p class="hint">Assembly: push the two screw parts together (the keyed peg only fits one way, which keeps the thread lined up). Drop the tray onto its rails, spin the carriage onto the screw from the back end, lower the screw into the wall notches and press the lid on. No glue, rods or rubber bands.</p>
     </section>
   </div>
 </div>
@@ -131,8 +135,9 @@ import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
 // model constants (mm), matching make_money_printer.py
 const T = 2.4, SLOT_Z0 = 14.2, TRAY_TOP = 14.5, RAMP_END = 30;
-const SCREW_X = 188, SCREW_Z = 23.5, LEAD = 12, P0 = 60.3, TRAVEL = 77.0;
-const NOTE_W = 75, NOTE_L = 150, NOTE_X0 = 14;
+const SCREW_X = 188, SCREW_Z = 23.5, LEAD = 12, P0 = 38.5, D = 272.2;
+const N = 3, NOTE_W = 77, NOTE_L = 150, NOTE_X0 = 14;
+const TRAVEL = N * NOTE_W, STEP = NOTE_W + T;
 
 const stage = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -141,11 +146,11 @@ stage.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 1, 3000);
-camera.position.set(250, 250, 330);
+camera.position.set(330, 330, 430);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 10, 0);
 controls.enableDamping = true;
-controls.minDistance = 150; controls.maxDistance = 900;
+controls.minDistance = 180; controls.maxDistance = 1100;
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x445048, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.8); sun.position.set(200, 400, 250); scene.add(sun);
@@ -154,10 +159,10 @@ const fill = new THREE.DirectionalLight(0xffffff, 0.6); fill.position.set(-300, 
 // model space is Z-up mm; this group converts to three's Y-up and centres it
 const model = new THREE.Group();
 model.rotation.x = -Math.PI / 2;
-model.position.set(-100, 0, 70);
+model.position.set(-100, 0, D / 2);
 scene.add(model);
 
-const grid = new THREE.GridHelper(420, 21, 0x7f8f87, 0x7f8f87);
+const grid = new THREE.GridHelper(600, 30, 0x7f8f87, 0x7f8f87);
 grid.material.transparent = true; grid.material.opacity = 0.18; grid.position.y = -0.2;
 scene.add(grid);
 
@@ -188,23 +193,25 @@ const paperTex = canvasTex((g, w, h) => {
 const noteMat = new THREE.MeshStandardMaterial({ map: noteTex, side: THREE.DoubleSide, roughness: 0.7 });
 const paperMat = new THREE.MeshStandardMaterial({ map: paperTex, side: THREE.DoubleSide, roughness: 0.9 });
 
-// note: flat sheet that rides on the tray
-const note = new THREE.Mesh(new THREE.PlaneGeometry(NOTE_L, NOTE_W), noteMat);
-model.add(note);
+// notes: flat sheets that ride on the tray, end to end
+const notes = Array.from({ length: N }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(NOTE_L, NOTE_W), noteMat); model.add(m); return m; });
 
 // paper: strip that follows the slot -> ramp -> pocket path
 const SEG = 80;
-const paperGeo = new THREE.BufferGeometry();
-const pPos = new Float32Array((SEG + 1) * 2 * 3), pUv = new Float32Array((SEG + 1) * 2 * 2), pIdx = [];
-for (let i = 0; i <= SEG; i++) {
-  pUv.set([0, i / SEG, 1, i / SEG], i * 4);
-  if (i < SEG) { const a = i * 2; pIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+function makePaper() {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array((SEG + 1) * 2 * 3), uv = new Float32Array((SEG + 1) * 2 * 2), idx = [];
+  for (let i = 0; i <= SEG; i++) {
+    uv.set([0, i / SEG, 1, i / SEG], i * 4);
+    if (i < SEG) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, paperMat); mesh.frustumCulled = false; model.add(mesh);
+  return mesh;
 }
-paperGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
-paperGeo.setAttribute("uv", new THREE.BufferAttribute(pUv, 2));
-paperGeo.setIndex(pIdx);
-const paper = new THREE.Mesh(paperGeo, paperMat); paper.frustumCulled = false;
-model.add(paper);
+const papers = Array.from({ length: N }, makePaper);
 
 const rampLen = Math.hypot(RAMP_END - T, SLOT_Z0 - 2.8);
 function pathPoint(d) {             // distance along paper route -> [y, z]
@@ -213,13 +220,14 @@ function pathPoint(d) {             // distance along paper route -> [y, z]
   if (d <= T + rampLen) { const k = (d - T) / rampLen; return [T + k * (RAMP_END - T), zs + k * (3.0 - zs)]; }
   return [RAMP_END + (d - T - rampLen), 3.0];
 }
-function setPaper(head) {
+function setPaper(mesh, head, lift) {
+  const pos = mesh.geometry.attributes.position;
   for (let i = 0; i <= SEG; i++) {
     const [y, z] = pathPoint(head - NOTE_W * (1 - i / SEG));
-    pPos.set([NOTE_X0, y, z, NOTE_X0 + NOTE_L, y, z], i * 6);
+    pos.array.set([NOTE_X0, y, z + lift, NOTE_X0 + NOTE_L, y, z + lift], i * 6);
   }
-  paperGeo.attributes.position.needsUpdate = true;
-  paperGeo.computeVertexNormals();
+  pos.needsUpdate = true;
+  mesh.geometry.computeVertexNormals();
 }
 
 // load parts
@@ -266,10 +274,11 @@ btn("spd").oninput = e => { ui.speed = +e.target.value; };
 const labelsEl = document.getElementById("labels");
 const tagDefs = [
   ["Paper in", () => [90, -18, 22]],
-  ["Money out", () => [90, 150 + Math.max(0, noteY - 60) * 0.5, 22]],
+  ["Money out", () => [90, D + 30, 22]],
   ["Crank", () => [SCREW_X, -12, SCREW_Z + 22]],
-  ["Hidden pocket", () => [60, 90, 6]],
+  ["Hidden pocket", () => [60, 70, 6]],
   ["Pusher", () => [120, P0 + noteY - 4, 26]],
+  ["Notes 2 and 3", () => [90, P0 + NOTE_W + noteY, 26]],
 ];
 const tagEls = tagDefs.map(([text]) => { const s = document.createElement("span"); s.className = "tag"; s.textContent = text; labelsEl.append(s); return s; });
 let noteY = 0;
@@ -282,28 +291,40 @@ function placeTags() {
   });
 }
 
-// animation timeline (seconds): idle, print, hold, reset
-const IDLE = 1.2, PRINT = 6.5, HOLD = 1.8, RESET = 1.4, CYCLE = IDLE + PRINT + HOLD + RESET;
+// animation timeline (seconds): per note idle, print, hold; then reset
+const IDLE = 0.8, PRINT = 5, HOLD = 1.2, RESET = 1.8, PER = IDLE + PRINT + HOLD, CYCLE = N * PER + RESET;
 let clock = 0;
 const ease = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+const stepLen = k => Math.min(STEP, TRAVEL - k * STEP);
 function pose(t) {
-  let f, state;
-  if (t < IDLE) { f = 0; state = "loaded"; }
-  else if (t < IDLE + PRINT) { f = ease((t - IDLE) / PRINT); state = "printing"; }
-  else if (t < IDLE + PRINT + HOLD) { f = 1; state = "printed"; }
-  else { f = 1 - ease((t - IDLE - PRINT - HOLD) / RESET); state = "resetting"; }
-  const resetting = state === "resetting";
-  const travel = f * TRAVEL;
+  let travel = 0, state, k = Math.min(N - 1, Math.floor(t / PER)), taken = 0;
+  const prog = new Array(N).fill(0);
+  if (t >= N * PER) {
+    const f = 1 - ease((t - N * PER) / RESET);
+    travel = f * TRAVEL; state = "winding back"; taken = N; k = N - 1;
+  } else {
+    const u = t - k * PER;
+    for (let j = 0; j < k; j++) { travel += stepLen(j); prog[j] = 1; }
+    taken = k;
+    if (u < IDLE) state = "ready";
+    else if (u < IDLE + PRINT) { const f = ease((u - IDLE) / PRINT); travel += f * stepLen(k); prog[k] = f; state = "printing"; }
+    else { travel += stepLen(k); prog[k] = 1; state = "take the note"; if (u > IDLE + PRINT + HOLD * 0.7) taken = k + 1; }
+  }
+  const resetting = state === "winding back";
   screwPivot.rotation.y = -(travel / LEAD) * Math.PI * 2;
   carriageGroup.position.y = travel;
-  // note rides the pusher out; during reset it is hidden (you take it)
   noteY = travel;
-  note.visible = !resetting;
-  note.position.set(NOTE_X0 + NOTE_L / 2, P0 + NOTE_W / 2 + travel, TRAY_TOP + 0.15);
-  // paper goes in at the same speed; during reset a fresh sheet waits at the slot
-  setPaper(resetting ? 1 : 1 + travel);
-  paper.visible = !resetting || f < 0.02;
+  notes.forEach((m, i) => {           // i = 0 is the note nearest the exit
+    m.visible = !resetting && i >= taken;
+    m.position.set(NOTE_X0 + NOTE_L / 2, P0 + (N - 1 - i) * NOTE_W + NOTE_W / 2 + travel, TRAY_TOP + 0.15);
+  });
+  papers.forEach((m, j) => {
+    const waiting = j === k && !resetting;
+    m.visible = !resetting && (prog[j] > 0 || waiting);
+    setPaper(m, 1 + prog[j] * STEP, j * 0.35);
+  });
   document.getElementById("r-state").textContent = state;
+  document.getElementById("r-note").textContent = String(k + 1);
   document.getElementById("r-turns").textContent = (travel / LEAD).toFixed(1);
   document.getElementById("r-mm").textContent = travel.toFixed(0);
 }
