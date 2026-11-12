@@ -27,6 +27,7 @@
   --line: #2c3833; --accent: #4fbf91; --accent-fg: #0b1411; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -227,7 +228,10 @@ const parts = {};
 const screwPivot = new THREE.Group(); screwPivot.position.set(SCREW_X, 0, SCREW_Z); model.add(screwPivot);
 const carriageGroup = new THREE.Group(); model.add(carriageGroup);
 await Promise.all(["base", "tray", "lid", "screw", "carriage"].map(name =>
-  loader.loadAsync(`${name}.stl`).then(geo => {
+  fetch(`${name}.stl.txt`).then(r => { if (!r.ok) throw new Error(r.status); return r.text(); }).then(b64 => {
+    const bin = atob(b64.trim()), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const geo = loader.parse(bytes.buffer);
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, M[name]);
     parts[name] = mesh;
