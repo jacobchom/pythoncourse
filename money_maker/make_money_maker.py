@@ -1,12 +1,15 @@
-"""Two-roller 'money maker' magic prop. Everything printed except one strip
-of thin black cloth/ribbon (~160 x 550 mm).
+"""Two-roller 'money maker' magic prop, minimalist gadget version.
+
+A closed rounded black case with a thin slit front and back. Inside, two
+rollers and a strip of black cloth do the trick. Everything is printed except
+the cloth (~160 x 550 mm thin black fabric or ribbon).
 
 How it works
-  The cloth is wound S-shaped between the rollers: one end clipped into the
-  TOP roller, the other into the BOTTOM roller. A real note is wound up inside
-  the cloth on the bottom roller. Turn the top knob: the cloth winds onto the
-  top roller, swallowing the blank paper you feed in from the front, while the
-  note unwinds from the bottom roller and slides out the back.
+  The cloth runs S-shaped between the rollers: one end clipped into the TOP
+  roller, the other into the BOTTOM roller. A real note is wound up inside the
+  cloth on the bottom roller. Turn the big knob: the cloth winds onto the top
+  roller, swallowing the blank paper fed into the front slit, while the note
+  unwinds from the bottom roller and slides out of the back slit.
 
 Run: python3 make_money_maker.py  -> ./print (bed-ready STLs) and ./viewer.
 Axes: X along the rollers, Y = paper direction (front is -Y), Z up. mm.
@@ -19,15 +22,18 @@ from manifold3d import Manifold, CrossSection
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 BODY = 170.0          # roller body length (fits notes up to 166 long)
-INNER = BODY + 2.0    # gap between the side plates
-PT = 6.0              # side plate thickness
+INNER = BODY + 2.0    # space between the end caps
+PT = 8.0              # end cap thickness
 R = 15.0              # roller radius
 AX = 4.0              # axle radius
 CLR = 0.3
-ZB = 32.0             # bottom roller centre
-ZA = ZB + 2 * R + 2.5 # top roller centre (2.5 mm gap for cloth build-up)
-NIP = (ZB + R + ZA - R) / 2
-TRAY_T = 2.0
+WALL = 3.0
+HW, HT, RAD = 25.0, 77.0, 12.0   # case half-width, height, corner radius
+ZB = 22.0                        # bottom roller centre
+ZA = ZB + 2 * R + 2.5            # top roller centre (2.5 mm gap for the cloth)
+NIP = (ZB + R + ZA - R) / 2      # 38.25
+SLIT = (NIP - 1.5, NIP + 1.5)    # 3 mm slit front and back
+LEDGE_TIP = 16.5                 # guide ledges reach in this far (|y|)
 
 
 def box(x0, y0, z0, x1, y1, z1):
@@ -38,95 +44,122 @@ def cyl_x(r, x0, x1, y, z, n=96):
     return Manifold.cylinder(x1 - x0, r, r, n).rotate([0, 90, 0]).translate([x0, y, z])
 
 
+def rrect(y0, z0, y1, z1, r, n=16):
+    pts = []
+    for cy, cz, a0 in [(y1 - r, z0 + r, -90), (y1 - r, z1 - r, 0), (y0 + r, z1 - r, 90), (y0 + r, z0 + r, 180)]:
+        for i in range(n + 1):
+            a = np.radians(a0 + 90 * i / n)
+            pts.append((cy + r * np.cos(a), cz + r * np.sin(a)))
+    return pts
+
+
 def yz_prism(pts, x0, x1):
-    """Polygon in the YZ plane, extruded along X."""
-    m = Manifold.extrude(CrossSection([pts]), x1 - x0)          # (y, z, x)
+    """Polygon(s) in the YZ plane, extruded along X from x0 to x1."""
+    polys = pts if isinstance(pts[0][0], (list, tuple)) else [pts]
+    m = Manifold.extrude(CrossSection([list(map(list, p)) for p in polys]), x1 - x0)
     return m.warp_batch(lambda v: np.stack([v[:, 2] + x0, v[:, 0], v[:, 1]], axis=1))
 
 
-def hexagon(r, h):
-    return Manifold.cylinder(h, r, r, 6)
+OUTER = rrect(-HW, 0, HW, HT, RAD)
+INNERP = rrect(-HW + WALL, WALL, HW - WALL, HT - WALL, RAD - WALL)
 
 
-# ---- side plate (print 2; same part for left and right) ---------------------
-PLATE = [(-30, 0), (30, 0), (30, 20), (24, 28), (24, 72), (30, 80), (30, 98),
-         (-30, 98), (-30, 80), (-24, 72), (-24, 28), (-30, 20)]
-BARS = [(-17, 9), (17, 9), (0, 91)]                 # (y, z) centres, 10x10 bars
-TAB_Y = (-22.0, -18.0)                              # tray tab slot, front side
+def profile_solid(x0, x1):
+    return yz_prism(OUTER, x0, x1) - yz_prism(INNERP, x0 - 1, x1 + 1)
 
 
-def make_plate():
-    """Built as the LEFT plate: inner face at x=0, outer at x=-PT."""
-    m = yz_prism(PLATE, -PT, 0)
-    # raised rim around the outer face for a machined look
-    inner = [(y * 0.82, 10 + (z - 10) * 0.86) for y, z in PLATE]
-    m += yz_prism(PLATE, -PT - 1.2, -PT) - yz_prism(inner, -PT - 2, -PT + 0.1)
+# ---- shells: base (U) and cover (upside-down U); the slit is the gap between
+BASE_TABS = [(0, WALL / 2), (-HW + WALL / 2, 16), (HW - WALL / 2, 16)]
+COVER_TABS = [(0, HT - WALL / 2), (-HW + WALL / 2, 60), (HW - WALL / 2, 60)]
+
+
+def tab(y, z, x0, x1, grow=0.0):
+    hy, hz = (4 + grow, 1.5 + grow) if abs(y) < 1 else (1.5 + grow, 4 + grow)
+    return box(x0, y - hy, z - hz, x1, y + hy, z + hz)
+
+
+def make_base():
+    m = profile_solid(0, INNER) ^ box(-1, -HW - 1, -1, INNER + 1, HW + 1, SLIT[0])
+    for s in (-1, 1):   # 45-degree guide ledges: lead the paper into the nip
+        w = HW - WALL
+        m += yz_prism([(s * w, SLIT[0]), (s * LEDGE_TIP, SLIT[0]), (s * w, SLIT[0] - (w - LEDGE_TIP))][::s], 0, INNER)
+    for y, z in BASE_TABS:
+        m += tab(y, z, -5, 0) + tab(y, z, INNER, INNER + 5)
+    return m
+
+
+def make_cover():
+    m = profile_solid(0, INNER) ^ box(-1, -HW - 1, SLIT[1], INNER + 1, HW + 1, HT + 1)
+    for s in (-1, 1):
+        w = HW - WALL
+        m += yz_prism([(s * w, SLIT[1]), (s * w, SLIT[1] + (w - LEDGE_TIP)), (s * LEDGE_TIP, SLIT[1])][::s], 0, INNER)
+    for y, z in COVER_TABS:
+        m += tab(y, z, -5, 0) + tab(y, z, INNER, INNER + 5)
+    # recessed accent line on top, for a contrasting inlay
+    m -= box(INNER / 2 - 30, -1.6, HT - 1.0, INNER / 2 + 30, 1.6, HT + 1)
+    return m
+
+
+def make_inlay():
+    return box(INNER / 2 - 29.8, -1.4, HT - 1.0, INNER / 2 + 29.8, 1.4, HT + 0.2)
+
+
+# ---- end caps (print 2; same part both ends) ---------------------------------
+def make_cap():
+    """Left cap: inner face at x=0, outer face at x=-PT, 1 mm chamfered edges."""
+    small = rrect(-HW + 1, 1, HW - 1, HT - 1, RAD - 1)
+    m = Manifold.hull(yz_prism(small, -PT, 0) + yz_prism(OUTER, -PT + 1, -1))
     for zc in (ZB, ZA):
-        m += cyl_x(9, -PT - 2.2, -PT, 0, zc)                        # bearing boss
-        m -= cyl_x(AX + CLR, -PT - 3, 1, 0, zc, 48)                 # axle hole
-    for y, z in [(-25, 7), (25, 7), (-25, 91), (25, 91), (-19, 48), (19, 48)]:
-        m += hexagon(2.8, 1.6).rotate([0, -90, 0]).translate([-PT - 1.2, y, z])  # bolt heads
-    for y, z in BARS:                                               # bar sockets
-        m -= box(-5.2, y - 3.15, z - 3.15, 0.1, y + 3.15, z + 3.15)
-    for s in (-1, 1):                                               # tray tab slots
-        y0, y1 = sorted((s * TAB_Y[0], s * TAB_Y[1]))
-        m -= box(-4.2, y0 - 0.2, NIP - TRAY_T - 0.25, 0.1, y1 + 0.2, NIP + 0.25)
+        m -= cyl_x(AX + CLR, -PT - 1, 1, 0, zc, 48)
+    for y, z in BASE_TABS + COVER_TABS:
+        m -= tab(y, z, -5.2, 0.1, grow=0.15)
     return m
 
 
-# ---- bars (print 3) -----------------------------------------------------------
-def make_bar(y, z):
-    m = box(0, y - 5, z - 5, INNER, y + 5, z + 5)
-    m += box(-5, y - 3, z - 3, 0, y + 3, z + 3) + box(INNER, y - 3, z - 3, INNER + 5, y + 3, z + 3)
-    return m
-
-
-# ---- rollers (print 2) --------------------------------------------------------
+# ---- rollers ------------------------------------------------------------------
 KEY_W, KEY_D = 2.2, 7.0
+KNOB_X = INNER + PT + 1.0          # knobs start 1 mm outside the cap
 
 
-def make_roller(zc):
+def make_roller(zc, shaft_len):
     m = cyl_x(R, 1, 1 + BODY, 0, zc)
-    m += cyl_x(AX, -PT, 1, 0, zc, 48)                        # left axle
-    shaft = cyl_x(AX, 1 + BODY, INNER + PT + 15.5, 0, zc, 48)  # right axle + knob shaft
-    shaft -= box(INNER + PT + 2, -10, zc + AX - 1, INNER + PT + 19, 10, zc + 10)   # D flat
+    m += cyl_x(AX, -PT, 1, 0, zc, 48)
+    shaft = cyl_x(AX, 1 + BODY, KNOB_X + shaft_len, 0, zc, 48)
+    shaft -= box(KNOB_X - 1, -10, zc + AX - 1, KNOB_X + shaft_len + 1, 10, zc + 10)   # D flat
     m += shaft
-    # cloth clamp slot along the top of the roller
-    m -= box(5, -KEY_W / 2, zc + R - KEY_D, BODY - 3, KEY_W / 2, zc + R + 1)
+    m -= box(5, -KEY_W / 2, zc + R - KEY_D, BODY - 3, KEY_W / 2, zc + R + 1)          # cloth slot
     return m
 
 
 def make_key():
-    """Wedge strip that pinches the cloth into the roller slot (print 2)."""
     pts = [(-0.85, 0), (0.85, 0), (1.15, KEY_D - 0.4), (-1.15, KEY_D - 0.4)]
     return yz_prism(pts, 5.5, BODY - 3.5)
 
 
-# ---- knobs (print 2) ----------------------------------------------------------
-def make_knob():
-    m = Manifold.cylinder(16, 11, 11, 96)
-    m += Manifold.cylinder(3, 11, 9, 96).translate([0, 0, 16])          # chamfered cap
-    for i in range(20):
-        a = 2 * np.pi * i / 20
-        m -= Manifold.cylinder(18, 1.1, 1.1, 16).translate([11.6 * np.cos(a), 11.6 * np.sin(a), -1])
-    hole = Manifold.cylinder(14, AX + 0.15, AX + 0.15, 48).translate([0, 0, -1])
-    hole -= box(-10, AX - 1 + 0.1, -2, 10, 10, 20)                       # matching D
-    return m - hole
+def d_hole(depth):
+    h = Manifold.cylinder(depth + 1, AX + 0.15, AX + 0.15, 48).translate([0, 0, -1])
+    return h - box(-10, AX - 1 + 0.1, -2, 10, 10, depth + 2)
 
 
-# ---- paper trays (print 2; front and back are the same part) ----------------
-def make_tray(front=True):
-    """Short guide lip that clips into the side plates (no legs)."""
-    y_tip, y_end = 17.0, 42.0
-    m = box(0.3, y_tip, NIP - TRAY_T, INNER - 0.3, y_end, NIP)
-    m += box(-3.9, 18.0, NIP - TRAY_T, 0.3, 22.0, NIP)                   # tabs into plates
-    m += box(INNER - 0.3, 18.0, NIP - TRAY_T, INNER + 3.9, 22.0, NIP)
-    m += box(0.3, y_end - 3, NIP - TRAY_T - 4, INNER - 0.3, y_end, NIP)  # stiffening edge
-    m += box(0.3, y_tip, NIP - TRAY_T - 4, 3.3, y_end, NIP)               # side ribs against the plates
-    m += box(INNER - 3.3, y_tip, NIP - TRAY_T - 4, INNER - 0.3, y_end, NIP)
-    if front:
-        m = m.mirror([0, 1, 0])
-    return m
+def chamfered_disc(r, h, c):
+    return Manifold.hull(Manifold.cylinder(h, r - c, r - c, 96) + Manifold.cylinder(h - 2 * c, r, r, 96).translate([0, 0, c]))
+
+
+def make_knob_main():
+    """Big knob for the top roller: fine knurl band, plain chamfered face."""
+    m = chamfered_disc(13, 14, 1.0)
+    for i in range(48):
+        a = 2 * np.pi * i / 48
+        m -= Manifold.cylinder(9, 0.55, 0.55, 12).translate([13.2 * np.cos(a), 13.2 * np.sin(a), 2.5])
+    m -= Manifold.cylinder(1, 1.6, 1.6, 24).translate([8.5, 0, 13.2])     # index dot
+    return m - d_hole(12)
+
+
+def make_knob_load():
+    """Low disc for the bottom roller, turned only when loading: coin slot."""
+    m = chamfered_disc(8, 5, 0.8)
+    m -= box(-6, -0.7, 3.8, 6, 0.7, 6)
+    return m - d_hole(4.2)
 
 
 def save(m, folder, name):
@@ -142,39 +175,42 @@ def on_bed(m):
     return m.translate([-b[0], -b[1], -b[2]])
 
 
-if __name__ == "__main__":
-    left = make_plate()
-    right = left.mirror([1, 0, 0]).translate([INNER, 0, 0])
-    bars = [make_bar(y, z) for y, z in BARS]
-    rb, ra = make_roller(ZB), make_roller(ZA)
-    keys = [make_key().translate([0, 0, zc + R - KEY_D + 0.4]) for zc in (ZB, ZA)]
-    knob = make_knob()
-    knobs = [knob.rotate([0, 0, 90]).rotate([0, 90, 0]).translate([INNER + PT + 3, 0, zc]) for zc in (ZB, ZA)]
-    tf, tb = make_tray(True), make_tray(False)
+def to_axis(knob, zc):
+    """Knob (built along +Z, D flat at +Y) placed on a roller shaft."""
+    return knob.rotate([0, 0, 90]).rotate([0, 90, 0]).translate([KNOB_X, 0, zc])
 
-    frame = left + right
-    for b in bars:
-        frame += b
-    pairs = {"roller B vs frame": rb ^ frame, "roller A vs frame": ra ^ frame,
-             "rollers": ra ^ rb, "trays vs frame": (tf + tb) ^ frame,
-             "trays vs rollers": (tf + tb) ^ (ra + rb), "knobs vs frame": (knobs[0] + knobs[1]) ^ frame,
-             "knobs vs rollers": knobs[0] ^ rb, "key vs roller": keys[0] ^ rb, "knob vs knob": knobs[0] ^ knobs[1]}
-    for k, v in pairs.items():
-        print(f"overlap {k:20s} {v.volume():8.2f}")
+
+if __name__ == "__main__":
+    capL = make_cap()
+    capR = capL.mirror([1, 0, 0]).translate([INNER, 0, 0])
+    base, cover, inlay = make_base(), make_cover(), make_inlay()
+    ra, rb = make_roller(ZA, 11.5), make_roller(ZB, 4.0)
+    kA, kB = to_axis(make_knob_main(), ZA), to_axis(make_knob_load(), ZB)
+    keys = [make_key().translate([0, 0, zc + R - KEY_D + 0.4]) for zc in (ZB, ZA)]
+    case = capL + capR + base + cover
+
+    checks = {"rollers vs case": (ra + rb) ^ case, "rollers": ra ^ rb,
+              "knobs vs case": (kA + kB) ^ case, "knob A vs roller": kA ^ ra, "knob B vs roller": kB ^ rb,
+              "knobs": kA ^ kB, "base vs cover": base ^ cover, "inlay vs cover": inlay ^ cover,
+              "caps vs shells": (capL + capR) ^ (base + cover), "key vs roller (press fit)": keys[0] ^ rb}
+    for k, v in checks.items():
+        print(f"overlap {k:26s} {v.volume():8.2f}")
 
     P = os.path.join(HERE, "print")
-    to_stand = lambda m: on_bed(m.rotate([0, -90, 0]))     # roller axis vertical
-    for m, n in [(on_bed(left.rotate([0, 90, 0])), "side_plate_x2.stl"),
-                 (on_bed(bars[0]), "bar_x3.stl"),
-                 (to_stand(rb), "roller_x2.stl"),
-                 (on_bed(make_key().rotate([0, 90, 0])), "cloth_clip_x2.stl"),
-                 (on_bed(knob), "knob_x2.stl"),
-                 (on_bed(tb.mirror([0, 0, 1])), "paper_tray_x2.stl")]:
+    stand = lambda m: on_bed(m.rotate([0, -90, 0]))
+    for m, n in [(on_bed(capL.rotate([0, -90, 0])), "end_cap_x2.stl"),
+                 (on_bed(base), "base_shell.stl"),
+                 (on_bed(cover.mirror([0, 0, 1])), "top_shell.stl"),
+                 (on_bed(inlay), "accent_inlay.stl"),
+                 (stand(ra), "roller_top.stl"), (stand(rb), "roller_bottom.stl"),
+                 (on_bed(make_knob_main()), "knob_main.stl"),
+                 (on_bed(make_knob_load()), "knob_loading.stl"),
+                 (on_bed(make_key().rotate([0, 90, 0])), "cloth_clip_x2.stl")]:
         t = save(m, P, n)
-        print(f"{n:22s} {np.round(t.extents, 1)} watertight={t.is_watertight}")
+        print(f"{n:20s} {np.round(t.extents, 1)} watertight={t.is_watertight}")
 
     V = os.path.join(HERE, "viewer")
-    for m, n in [(frame, "frame.stl"), (rb + knobs[0], "roller.stl"),
-                 (tf + tb, "trays.stl")]:
+    for m, n in [(capL + capR, "caps.stl"), (base + cover, "shell.stl"), (inlay, "inlay.stl"),
+                 (ra + kA, "rollerA.stl"), (rb + kB, "rollerB.stl")]:
         save(m, V, n)
-    print(f"ZB={ZB} ZA={ZA} NIP={NIP}  overall {INNER + 2*PT + 22:.0f} x 150 x 98")
+    print(f"ZB={ZB} ZA={ZA} NIP={NIP} case {INNER + 2*PT:.0f} x {2*HW:.0f} x {HT:.0f}")

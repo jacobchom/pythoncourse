@@ -68,7 +68,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
 <div class="wrap">
   <header>
     <h1>Money Printer Prop</h1>
-    <p>A two-roller money maker. Feed blank paper into the front, turn the knob, and a real note rolls out the back. Drag to orbit, scroll or pinch to zoom.</p>
+    <p>A sealed black case with a slit front and back. Feed blank paper into the front, turn the knob, and a real note slides out the back. Drag to orbit, scroll or pinch to zoom.</p>
   </header>
 
   <div class="stage" id="stage">
@@ -84,6 +84,7 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
   <div class="controls">
     <button id="play" class="primary">Pause</button>
     <button id="restart">Restart</button>
+    <button id="inside" aria-pressed="true">See inside</button>
     <button id="cloth" aria-pressed="true">Show cloth</button>
     <button id="tags" aria-pressed="true">Labels</button>
     <label class="speed" for="spd">Speed <input id="spd" type="range" min="0.25" max="2" step="0.25" value="1"></label>
@@ -92,18 +93,18 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
   <div class="cols">
     <section>
       <h2>How the trick works</h2>
-      <p>A strip of black cloth runs between the rollers in an S shape: one end is clipped into the top roller, the other into the bottom roller. Because the rollers and cloth are both black, nobody can see it.</p>
+      <p>Inside the case, a strip of black cloth runs between two rollers in an S shape: one end is clipped into the top roller, the other into the bottom roller. From outside you only see two thin slits.</p>
       <ol>
         <li>The note starts wound up inside the cloth on the bottom roller.</li>
-        <li>Put blank paper on the front tray and push it into the gap between the rollers, on top of the cloth.</li>
-        <li>Turn the top knob towards the back, a bit less than one full turn. The cloth winds onto the top roller and carries the paper with it, rolled up out of sight.</li>
-        <li>As the cloth leaves the bottom roller, the note underneath is released and slides out onto the back tray.</li>
+        <li>Push blank paper into the front slit. Angled ledges inside steer it into the gap between the rollers, on top of the cloth.</li>
+        <li>Turn the big knob a bit less than one full turn. The cloth winds onto the top roller and carries the paper with it, rolled up out of sight.</li>
+        <li>As the cloth leaves the bottom roller, the note underneath is released and slides out of the back slit.</li>
       </ol>
       <h3>Loading a note</h3>
       <ol>
-        <li>Turn the top knob forward until most of the cloth is on the top roller. Any paper from the last go comes back out of the front.</li>
-        <li>Slide the note in from the back tray, under the cloth (between the cloth and the bottom roller).</li>
-        <li>Turn the bottom knob towards you. The cloth winds back onto the bottom roller and wraps the note up with it. Stop when the note's edge just reaches the gap.</li>
+        <li>Turn the big knob backwards until most of the cloth is on the top roller. Any paper from the last go comes back out of the front.</li>
+        <li>Slide the note into the back slit, under the cloth (between the cloth and the bottom roller).</li>
+        <li>Turn the small loading disc with a coin. The cloth winds back onto the bottom roller and wraps the note up with it. Stop when the note's edge just reaches the gap.</li>
       </ol>
     </section>
     <section>
@@ -112,12 +113,15 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
       <table>
         <thead><tr><th>Part</th><th>Qty</th><th>Size (mm)</th><th>Print it</th></tr></thead>
         <tbody>
-          <tr><td>Side plate</td><td class="num">2</td><td class="num">98 × 60 × 9</td><td>Flat, bolt heads up</td></tr>
-          <tr><td>Roller</td><td class="num">2</td><td class="num">30 × 30 × 200</td><td>Standing, knob shaft up, with brim</td></tr>
-          <tr><td>Bar</td><td class="num">3</td><td class="num">182 × 10 × 10</td><td>Flat</td></tr>
-          <tr><td>Paper guide</td><td class="num">2</td><td class="num">180 × 25 × 6</td><td>Top face down</td></tr>
-          <tr><td>Knob</td><td class="num">2</td><td class="num">22 × 22 × 19</td><td>Flat end down</td></tr>
+          <tr><td>End cap</td><td class="num">2</td><td class="num">77 × 50 × 8</td><td>Flat, outer face up</td></tr>
+          <tr><td>Base shell</td><td class="num">1</td><td class="num">182 × 50 × 37</td><td>Flat bottom down</td></tr>
+          <tr><td>Top shell</td><td class="num">1</td><td class="num">182 × 50 × 37</td><td>Upside down, top face on bed</td></tr>
+          <tr><td>Top roller</td><td class="num">1</td><td class="num">30 × 30 × 201</td><td>Standing, shaft up, with brim</td></tr>
+          <tr><td>Bottom roller</td><td class="num">1</td><td class="num">30 × 30 × 193</td><td>Standing, shaft up, with brim</td></tr>
+          <tr><td>Main knob</td><td class="num">1</td><td class="num">26 × 26 × 14</td><td>Open end down</td></tr>
+          <tr><td>Loading disc</td><td class="num">1</td><td class="num">16 × 16 × 5</td><td>Open end down</td></tr>
           <tr><td>Cloth clip</td><td class="num">2</td><td class="num">161 × 7 × 2.3</td><td>On its edge</td></tr>
+          <tr><td>Accent inlay</td><td class="num">1</td><td class="num">60 × 3 × 1.2</td><td>Flat, in a contrast colour</td></tr>
         </tbody>
       </table>
       </div>
@@ -127,10 +131,10 @@ td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-spa
       <ol>
         <li>Lay one end of the cloth over the slot in the bottom roller and press a cloth clip into the slot to pinch it. Wrap the cloth once round that roller.</li>
         <li>Take the cloth up between the rollers and clip the other end into the top roller the same way.</li>
-        <li>Push the roller axles into one side plate, press the three bars into that plate, then press the second plate on.</li>
-        <li>Clip the two paper guides into the slots at the front and back, and push the knobs onto the D-shaped shafts.</li>
+        <li>Sit the rollers in the base shell, lay the top shell on, then press an end cap onto each end. The tabs on the shells push into the caps and the axles go through the caps.</li>
+        <li>Push the main knob onto the top roller's shaft and the loading disc onto the bottom one. Press the accent inlay into the groove on top.</li>
       </ol>
-      <p class="hint">Print the frame in dark grey and the rollers and knobs in black for the look in your photo. The rollers need a printer at least 200 mm tall.</p>
+      <p class="hint">For the gadget look: case and rollers in matte black, knob in silver or grey, inlay in red. The rollers need a printer at least 201 mm tall.</p>
     </section>
   </div>
 </div>
@@ -147,7 +151,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
 // model constants (mm), matching make_money_maker.py
-const R = 15, ZB = 32, ZA = 64.5, NIP = 48.25, INNER = 172;
+const R = 15, ZB = 22, ZA = 54.5, NIP = 38.25, INNER = 172;
 const SHEET_L = 150, SHEET_W = 75, X0 = INNER / 2 - SHEET_L / 2, FEED = 80;
 const RA = R + 0.6, RB = R + 0.4, RC = R + 1.0;     // paper on A, note on B, cloth outside
 
@@ -158,9 +162,9 @@ stage.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 1, 3000);
-camera.position.set(260, 210, 300);
+camera.position.set(240, 170, 280);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 40, 0);
+controls.target.set(0, 32, 0);
 controls.enableDamping = true;
 controls.minDistance = 120; controls.maxDistance = 900;
 
@@ -179,9 +183,11 @@ grid.material.transparent = true; grid.material.opacity = 0.18; grid.position.y 
 scene.add(grid);
 
 const M = {
-  frame: new THREE.MeshStandardMaterial({ color: 0x5c6166, roughness: 0.45, metalness: 0.55 }),
-  trays: new THREE.MeshStandardMaterial({ color: 0x6b7076, roughness: 0.5, metalness: 0.45 }),
+  shell: new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.7, metalness: 0.15 }),
+  caps: new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.45, metalness: 0.5 }),
+  inlay: new THREE.MeshStandardMaterial({ color: 0xd8262e, roughness: 0.4, emissive: 0x5a0a0d }),
   roller: new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.55, metalness: 0.1 }),
+  knob: new THREE.MeshStandardMaterial({ color: 0xb9bdc2, roughness: 0.3, metalness: 0.9 }),
 };
 const clothMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.35, metalness: 0.2, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
 
@@ -260,13 +266,23 @@ const load = name => fetch(`${name}.stl.txt`).then(r => { if (!r.ok) throw new E
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const geo = loader.parse(bytes.buffer); geo.computeVertexNormals(); return geo;
 });
+// colour the part of each roller mesh beyond the end cap (the knob) silver
+function tintKnob(geo) {
+  const pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
+  const dark = new THREE.Color(0x1b1c1e), metal = new THREE.Color(0xb9bdc2);
+  for (let i = 0; i < pos.count; i++) (pos.getX(i) > INNER + 8.5 ? metal : dark).toArray(col, i * 3);
+  geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+}
+M.roller.vertexColors = true; M.roller.color.set(0xffffff);
 const pivA = new THREE.Group(), pivB = new THREE.Group();
 pivA.position.set(0, 0, ZA); pivB.position.set(0, 0, ZB); model.add(pivA, pivB);
 try {
-  const [frame, roller, trays] = await Promise.all(["frame", "roller", "trays"].map(load));
-  model.add(new THREE.Mesh(frame, M.frame), new THREE.Mesh(trays, M.trays));
-  const rb = new THREE.Mesh(roller, M.roller); rb.position.z = -ZB; pivB.add(rb);
-  const ra = new THREE.Mesh(roller, M.roller); ra.position.z = -ZB; pivA.add(ra);
+  const [caps, shell, inlay, rA, rB] = await Promise.all(["caps", "shell", "inlay", "rollerA", "rollerB"].map(load));
+  model.add(new THREE.Mesh(caps, M.caps), new THREE.Mesh(shell, M.shell), new THREE.Mesh(inlay, M.inlay));
+  // knob material on the shaft end: split by x so the knobs read as metal
+  const a = new THREE.Mesh(rA, [M.roller]); a.position.z = -ZA; pivA.add(a);
+  const b = new THREE.Mesh(rB, [M.roller]); b.position.z = -ZB; pivB.add(b);
+  for (const m of [a, b]) { m.material = M.roller; tintKnob(m.geometry); }
   document.getElementById("loading").hidden = true;
 } catch (err) {
   document.getElementById("loading").textContent = "Could not load the model files. Reload the page to try again.";
@@ -274,25 +290,28 @@ try {
 }
 
 // UI
-const ui = { playing: !matchMedia("(prefers-reduced-motion: reduce)").matches, cloth: true, tags: true, speed: 1 };
+const ui = { playing: !matchMedia("(prefers-reduced-motion: reduce)").matches, inside: true, cloth: true, tags: true, speed: 1 };
 const btn = id => document.getElementById(id);
 const labelsEl = document.getElementById("labels");
 function applyLook() {
   cloth.visible = ui.cloth; labelsEl.hidden = !ui.tags;
+  for (const m of [M.shell, M.caps]) { m.transparent = ui.inside; m.opacity = ui.inside ? 0.22 : 1; m.depthWrite = !ui.inside; m.needsUpdate = true; }
+  btn("inside").setAttribute("aria-pressed", ui.inside);
   btn("cloth").setAttribute("aria-pressed", ui.cloth); btn("tags").setAttribute("aria-pressed", ui.tags);
   btn("play").textContent = ui.playing ? "Pause" : "Play";
 }
 btn("play").onclick = () => { ui.playing = !ui.playing; applyLook(); };
 btn("restart").onclick = () => { clock = 0; ui.playing = true; applyLook(); };
+btn("inside").onclick = () => { ui.inside = !ui.inside; applyLook(); };
 btn("cloth").onclick = () => { ui.cloth = !ui.cloth; applyLook(); };
 btn("tags").onclick = () => { ui.tags = !ui.tags; applyLook(); };
 btn("spd").oninput = e => { ui.speed = +e.target.value; };
 
 const tagDefs = [
-  ["Paper in", [INNER / 2, -60, NIP + 12]],
-  ["Money out", [INNER / 2, 62, NIP + 12]],
-  ["Turn this knob", [INNER + 16, 0, ZA + 22]],
-  ["Note hidden here", [INNER / 2 - 40, -6, ZB - 26]],
+  ["Paper in", [INNER / 2, -62, NIP + 6]],
+  ["Money out", [INNER / 2, 64, NIP + 6]],
+  ["Turn this knob", [INNER + 18, 0, ZA + 24]],
+  ["Note hidden here", [INNER / 2 - 45, -4, ZB - 4]],
 ];
 const tagEls = tagDefs.map(([text]) => { const s = document.createElement("span"); s.className = "tag"; s.textContent = text; labelsEl.append(s); return s; });
 const v = new THREE.Vector3();
