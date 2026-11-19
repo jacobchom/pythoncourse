@@ -120,13 +120,13 @@ window.addEventListener("resize", resize); resize();
 
 // ---------- save ----------
 const UPGRADES = [
-  { id: "wings",   name: "Faster wings",   desc: "Climb faster",                         base: 25, max: 15 },
-  { id: "stamina", name: "Bigger heart",   desc: "Start with more energy",              base: 30, max: 15 },
-  { id: "nectar",  name: "Long tongue",    desc: "Each flower gives more energy",       base: 40, max: 12 },
-  { id: "magnet",  name: "Sweet tooth",    desc: "Pull in flowers from further away",   base: 35, max: 10 },
-  { id: "armor",   name: "Tough feathers", desc: "Hazards drain less energy",           base: 45, max: 10 },
-  { id: "dive",    name: "Torpedo dive",   desc: "Hit the water faster",                base: 50, max: 15 },
-  { id: "lungs",   name: "Deep lungs",     desc: "Less drag underwater",                base: 50, max: 15 },
+  { id: "wings",   name: "Faster wings",   desc: "Climb faster",                         base: 12, max: 15 },
+  { id: "stamina", name: "Bigger heart",   desc: "Start with more energy",              base: 15, max: 15 },
+  { id: "nectar",  name: "Long tongue",    desc: "Each flower gives more energy",       base: 20, max: 12 },
+  { id: "magnet",  name: "Sweet tooth",    desc: "Pull in flowers from further away",   base: 18, max: 10 },
+  { id: "armor",   name: "Tough feathers", desc: "Hazards drain less energy",           base: 22, max: 10 },
+  { id: "dive",    name: "Torpedo dive",   desc: "Hit the water faster",                base: 25, max: 15 },
+  { id: "lungs",   name: "Deep lungs",     desc: "Less drag underwater",                base: 25, max: 15 },
 ];
 const save = { pollen: 0, bestH: 0, bestD: 0, lv: {} };
 UPGRADES.forEach(u => save.lv[u.id] = 0);
@@ -136,7 +136,7 @@ try {
 } catch (e) {}
 function persist() { try { localStorage.setItem("hummillion-save", JSON.stringify(save)); } catch (e) {} }
 const lv = id => save.lv[id] || 0;
-const cost = u => Math.round(u.base * Math.pow(1.55, lv(u.id)));
+const cost = u => Math.round(u.base * Math.pow(1.35, lv(u.id)));
 
 // ---------- input ----------
 const input = { left: false, right: false, pointerX: null };
@@ -167,7 +167,7 @@ function newBird() {
 function startRun() {
   hideAll();
   bird = newBird();
-  bird.maxE = 8 + lv("stamina") * 2.2;
+  bird.maxE = 16 + lv("stamina") * 3.5;
   bird.energy = bird.maxE;
   objs = []; parts = [];
   run = { maxH: 0, depth: 0, flowers: 0, gold: 0, entry: 0, rings: 0, spawnedTo: 8, swimSpawnedTo: -6, fallBonus: 1, endT: 0 };
@@ -213,7 +213,7 @@ function zoneName(h) {
 function spawnAscend(upTo) {
   while (run.spawnedTo < upTo) {
     const y = run.spawnedTo, hw = halfWm();
-    const flowerChance = clamp(0.75 - y / 4000, 0.32, 0.75);
+    const flowerChance = clamp(0.85 - y / 6000, 0.45, 0.85);
     if (Math.random() < flowerChance) {
       const gold = Math.random() < 0.06;
       objs.push({ k: gold ? "gold" : "flower", x: rand(-hw, hw), y: y + rand(0, 4), r: 1.6, hue: rand(280, 380) % 360, bob: rand(0, 6) });
@@ -287,8 +287,8 @@ function updateAscend(dt) {
   spawnAscend(bird.y + H / PX + 10);
 
   const magR = 1.5 + lv("magnet") * 0.9;
-  const nectarE = 1.4 + lv("nectar") * 0.35;
-  const dmg = 2.6 * Math.pow(0.88, lv("armor"));
+  const nectarE = 2.2 + lv("nectar") * 0.5;
+  const dmg = 2.0 * Math.pow(0.88, lv("armor"));
   for (const o of objs) {
     if (o.dead) continue;
     if (o.k === "wasp") o.x = o.cx + Math.sin(t * o.sp + o.ph) * o.amp;
