@@ -1,0 +1,741 @@
+<title>Hummillion</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Layout: full-bleed canvas world, floating panels for menu / results / shop. Single deliberate dusk-meadow look. */
+:root {
+  --ink: #1b2340;
+  --paper: #fff8ec;
+  --ruby: #e0304e;
+  --emerald: #19b37a;
+  --nectar: #ffc93c;
+  --deep: #0b1a3a;
+  --muted: #5d6a8a;
+  --display: "Lilita One", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; background: var(--deep); color: var(--ink);
+  font-family: var(--body); user-select: none; -webkit-user-select: none; touch-action: none;
+}
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.panel {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(440px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto;
+  background: var(--paper); border-radius: 22px; padding: 22px 20px;
+  box-shadow: 0 18px 50px rgba(5, 10, 30, .45); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 14px; text-align: center;
+}
+h1, h2 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; letter-spacing: .5px; }
+h1 { font-size: 3rem; line-height: 1; color: var(--emerald); text-shadow: 3px 3px 0 var(--ruby); }
+h2 { font-size: 2rem; color: var(--ink); }
+p { margin: 0; color: var(--muted); line-height: 1.45; }
+.btn {
+  font-family: var(--display); font-size: 1.35rem; border: 0; cursor: pointer;
+  padding: 12px 18px; border-radius: 14px; background: var(--ruby); color: var(--paper);
+  box-shadow: 0 4px 0 #9c1a31; transition: transform .08s;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #9c1a31; }
+.btn.alt { background: var(--emerald); box-shadow: 0 4px 0 #0c7a52; }
+.btn:focus-visible, .up:focus-visible { outline: 3px solid var(--nectar); outline-offset: 2px; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat { background: #f3e9d6; border-radius: 12px; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+.stat b { font-family: var(--display); font-weight: 400; font-size: 1.6rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat span { font-size: .72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 800; }
+.stat.new b { color: var(--ruby); }
+.pollen { font-family: var(--display); font-size: 1.3rem; color: #b07a00; }
+.ups { display: flex; flex-direction: column; gap: 8px; }
+.up {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; text-align: left;
+  background: #f3e9d6; border: 0; border-radius: 12px; padding: 10px 12px; cursor: pointer; font-family: var(--body); color: var(--ink);
+}
+.up:disabled { opacity: .55; cursor: default; }
+.up .nm { font-weight: 800; font-size: 1rem; }
+.up .ds { grid-column: 1; font-size: .8rem; color: var(--muted); }
+.up .cost { grid-row: 1 / span 2; grid-column: 2; font-family: var(--display); font-size: 1.1rem; color: #b07a00; white-space: nowrap; }
+.up .lv { font-size: .75rem; color: var(--emerald); font-weight: 800; margin-left: 6px; }
+.keys { font-size: .82rem; }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+</style>
+
+<canvas id="game"></canvas>
+
+<div class="panel" id="menu">
+  <h1>Hummillion</h1>
+  <p>Fly your hummingbird as high as the sky allows. Sip nectar to keep your wings buzzing, dodge wasps, hawks and storm clouds. When your energy runs dry, tuck your wings and dive into the lake to see how deep you can go.</p>
+  <div class="stats">
+    <div class="stat"><b id="mBestH">0 m</b><span>Best height</span></div>
+    <div class="stat"><b id="mBestD">0 m</b><span>Best depth</span></div>
+  </div>
+  <div class="pollen" id="mPollen">0 pollen</div>
+  <div class="row">
+    <button class="btn" id="playBtn">Fly</button>
+    <button class="btn alt" id="shopBtn1">Upgrades</button>
+  </div>
+  <p class="keys">Steer with mouse, touch or ← → / A D. Press Space to fly.</p>
+</div>
+
+<div class="panel" id="results" hidden>
+  <h2>Splashdown!</h2>
+  <div class="stats">
+    <div class="stat" id="rHBox"><b id="rH">0 m</b><span>Height</span></div>
+    <div class="stat" id="rDBox"><b id="rD">0 m</b><span>Depth</span></div>
+    <div class="stat"><b id="rN">0</b><span>Flowers sipped</span></div>
+    <div class="stat"><b id="rS">0</b><span>Entry speed m/s</span></div>
+  </div>
+  <div class="pollen" id="rP">+0 pollen</div>
+  <div class="row">
+    <button class="btn" id="againBtn">Fly again</button>
+    <button class="btn alt" id="shopBtn2">Upgrades</button>
+  </div>
+</div>
+
+<div class="panel" id="shop" hidden>
+  <h2>Upgrades</h2>
+  <div class="pollen" id="sPollen">0 pollen</div>
+  <div class="ups" id="ups"></div>
+  <button class="btn" id="shopFly">Fly</button>
+</div>
+
+<script>
+(() => {
+"use strict";
+const cv = document.getElementById("game");
+const ctx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+const PX = 9; // pixels per metre
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize); resize();
+
+// ---------- save ----------
+const UPGRADES = [
+  { id: "wings",   name: "Faster wings",   desc: "Climb faster",                         base: 25, max: 15 },
+  { id: "stamina", name: "Bigger heart",   desc: "Start with more energy",              base: 30, max: 15 },
+  { id: "nectar",  name: "Long tongue",    desc: "Each flower gives more energy",       base: 40, max: 12 },
+  { id: "magnet",  name: "Sweet tooth",    desc: "Pull in flowers from further away",   base: 35, max: 10 },
+  { id: "armor",   name: "Tough feathers", desc: "Hazards drain less energy",           base: 45, max: 10 },
+  { id: "dive",    name: "Torpedo dive",   desc: "Hit the water faster",                base: 50, max: 15 },
+  { id: "lungs",   name: "Deep lungs",     desc: "Less drag underwater",                base: 50, max: 15 },
+];
+const save = { pollen: 0, bestH: 0, bestD: 0, lv: {} };
+UPGRADES.forEach(u => save.lv[u.id] = 0);
+try {
+  const s = JSON.parse(localStorage.getItem("hummillion-save") || "null");
+  if (s) { Object.assign(save, s); save.lv = Object.assign({}, ...UPGRADES.map(u => ({ [u.id]: 0 })), s.lv || {}); }
+} catch (e) {}
+function persist() { try { localStorage.setItem("hummillion-save", JSON.stringify(save)); } catch (e) {} }
+const lv = id => save.lv[id] || 0;
+const cost = u => Math.round(u.base * Math.pow(1.55, lv(u.id)));
+
+// ---------- input ----------
+const input = { left: false, right: false, pointerX: null };
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") input.left = true;
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") input.right = true;
+  if (e.key === " " && (state === "menu" || state === "results")) { e.preventDefault(); startRun(); }
+});
+window.addEventListener("keyup", e => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") input.left = false;
+  if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") input.right = false;
+});
+cv.addEventListener("pointermove", e => { input.pointerX = e.clientX; });
+cv.addEventListener("pointerdown", e => { input.pointerX = e.clientX; });
+cv.addEventListener("pointerleave", () => { input.pointerX = null; });
+
+// ---------- world ----------
+let state = "menu"; // menu | ascend | fall | swim | results | shop
+let bird, objs, parts, cam, run, t = 0, deco;
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const halfWm = () => W / PX / 2 - 2;
+
+function newBird() {
+  return { x: 0, y: 0, vx: 0, vy: 0, energy: 0, maxE: 0, stun: 0, flash: 0, ang: 0 };
+}
+function startRun() {
+  hideAll();
+  bird = newBird();
+  bird.maxE = 8 + lv("stamina") * 2.2;
+  bird.energy = bird.maxE;
+  objs = []; parts = [];
+  run = { maxH: 0, depth: 0, flowers: 0, gold: 0, entry: 0, rings: 0, spawnedTo: 8, swimSpawnedTo: -6, fallBonus: 1, endT: 0 };
+  cam = { y: 0 };
+  deco = makeDeco();
+  state = "ascend";
+}
+function makeDeco() {
+  const d = [];
+  for (let i = 0; i < 60; i++) d.push({ x: rand(-1, 1), y: rand(30, 3000), s: rand(.6, 1.6), p: rand(.3, .7) });
+  return d;
+}
+
+// altitude zones
+const SKY = [
+  [0,    [126, 206, 244], [208, 238, 250]],
+  [150,  [ 92, 168, 232], [170, 214, 245]],
+  [400,  [ 70, 110, 205], [130, 170, 230]],
+  [800,  [ 40,  50, 140], [ 90, 110, 200]],
+  [1400, [ 14,  14,  50], [ 40,  40, 110]],
+  [2200, [  4,   4,  16], [ 14,  14,  40]],
+];
+const SEA = [
+  [0,   [ 40, 170, 190], [ 20, 130, 170]],
+  [30,  [ 18, 100, 160], [ 10,  70, 130]],
+  [80,  [  8,  45, 100], [  5,  28,  70]],
+  [160, [  3,  10,  35], [  1,   4,  18]],
+];
+function zoneColor(table, v) {
+  let i = 0; while (i < table.length - 1 && v > table[i + 1][0]) i++;
+  if (i === table.length - 1) return [table[i][1], table[i][2]];
+  const k = (v - table[i][0]) / (table[i + 1][0] - table[i][0]);
+  const mix = (a, b) => a.map((c, j) => Math.round(lerp(c, b[j], k)));
+  return [mix(table[i][1], table[i + 1][1]), mix(table[i][2], table[i + 1][2])];
+}
+const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+function zoneName(h) {
+  if (h < 0) { const d = -h; return d < 30 ? "Shallows" : d < 80 ? "Blue lake" : d < 160 ? "The deep" : "Abyss"; }
+  return h < 60 ? "Meadow" : h < 150 ? "Treetops" : h < 400 ? "Open sky" : h < 800 ? "Cloud sea" : h < 1400 ? "High air" : h < 2200 ? "Edge of space" : "Orbit";
+}
+
+// ---------- spawning ----------
+function spawnAscend(upTo) {
+  while (run.spawnedTo < upTo) {
+    const y = run.spawnedTo, hw = halfWm();
+    const flowerChance = clamp(0.75 - y / 4000, 0.32, 0.75);
+    if (Math.random() < flowerChance) {
+      const gold = Math.random() < 0.06;
+      objs.push({ k: gold ? "gold" : "flower", x: rand(-hw, hw), y: y + rand(0, 4), r: 1.6, hue: rand(280, 380) % 360, bob: rand(0, 6) });
+    }
+    const hz = clamp(0.08 + y / 2500, 0.08, 0.5);
+    if (y > 25 && Math.random() < hz) {
+      const roll = Math.random();
+      if (y > 350 && roll < 0.3) objs.push({ k: "storm", x: rand(-hw, hw), y, r: 4.5, vx: rand(-1, 1) });
+      else if (y > 120 && roll < 0.65) { const dir = Math.random() < .5 ? -1 : 1; objs.push({ k: "hawk", x: -dir * (hw + 6), y, r: 2.2, vx: dir * rand(9, 15 + y / 200), dir }); }
+      else objs.push({ k: "wasp", x: rand(-hw, hw), y, r: 1.3, cx: rand(-hw, hw), amp: rand(3, 9), sp: rand(1.5, 3), ph: rand(0, 6) });
+    }
+    if (y > 40 && Math.random() < 0.05) objs.push({ k: "updraft", x: rand(-hw, hw), y, r: 2.4 });
+    run.spawnedTo += 6;
+  }
+}
+function spawnSwim(downTo) {
+  while (run.swimSpawnedTo > downTo) {
+    const y = run.swimSpawnedTo, hw = halfWm();
+    if (Math.random() < 0.55) objs.push({ k: "bubble", x: rand(-hw, hw), y: y - rand(0, 3), r: 1.4 });
+    if (Math.random() < clamp(0.15 + -y / 400, 0.15, 0.55)) {
+      if (-y > 60 && Math.random() < 0.35) objs.push({ k: "angler", x: rand(-hw, hw), y, r: 2.2, vx: rand(-3, 3) });
+      else objs.push({ k: "jelly", x: rand(-hw, hw), y, r: 1.8, ph: rand(0, 6) });
+    }
+    if (Math.random() < 0.12) objs.push({ k: "fish", x: rand(-hw, hw), y, r: 0, vx: (Math.random() < .5 ? -1 : 1) * rand(3, 7), deco: true });
+    run.swimSpawnedTo -= 5;
+  }
+}
+function spawnFallRings(fromY) {
+  const hw = halfWm();
+  for (let y = fromY - 30; y > 20; y -= rand(40, 90)) objs.push({ k: "ring", x: rand(-hw * .8, hw * .8), y, r: 3 });
+}
+
+// ---------- particles ----------
+function burst(x, y, color, n, spd = 8) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, Math.PI * 2), s = rand(spd * .3, spd);
+    parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rand(.4, .9), max: .9, c: color, r: rand(.2, .5) });
+  }
+}
+function popText(x, y, text, color) { parts.push({ x, y, vx: 0, vy: 3, life: 1, max: 1, text, c: color }); }
+
+// ---------- update ----------
+function steer(dt, speed) {
+  const hw = halfWm();
+  let target = null;
+  if (input.left || input.right) target = bird.x + (input.right ? 1 : 0) * 30 - (input.left ? 1 : 0) * 30;
+  else if (input.pointerX !== null) target = (input.pointerX - W / 2) / PX;
+  if (target !== null) {
+    const dx = clamp(target, -hw, hw) - bird.x;
+    bird.vx = lerp(bird.vx, clamp(dx * 6, -speed, speed), 1 - Math.exp(-dt * 10));
+  } else bird.vx *= Math.exp(-dt * 4);
+  bird.x = clamp(bird.x + bird.vx * dt, -hw, hw);
+}
+
+function hit(o) { const dx = o.x - bird.x, dy = o.y - bird.y; return dx * dx + dy * dy < (o.r + 1.2) * (o.r + 1.2); }
+
+function updateAscend(dt) {
+  steer(dt, 28);
+  const climb = 11 + lv("wings") * 2.2;
+  if (bird.stun > 0) bird.stun -= dt;
+  if (bird.energy > 0 && bird.stun <= 0) {
+    bird.vy = lerp(bird.vy, climb, 1 - Math.exp(-dt * 3));
+    bird.energy -= dt;
+  } else if (bird.energy > 0) {
+    bird.vy = lerp(bird.vy, 0, 1 - Math.exp(-dt * 6));
+  } else {
+    bird.vy -= 22 * dt;
+  }
+  bird.y += bird.vy * dt;
+  run.maxH = Math.max(run.maxH, bird.y);
+  spawnAscend(bird.y + H / PX + 10);
+
+  const magR = 1.5 + lv("magnet") * 0.9;
+  const nectarE = 1.4 + lv("nectar") * 0.35;
+  const dmg = 2.6 * Math.pow(0.88, lv("armor"));
+  for (const o of objs) {
+    if (o.dead) continue;
+    if (o.k === "wasp") o.x = o.cx + Math.sin(t * o.sp + o.ph) * o.amp;
+    if (o.k === "hawk") o.x += o.vx * dt;
+    if (o.k === "storm") o.x += o.vx * dt;
+    if ((o.k === "flower" || o.k === "gold") && bird.energy > 0) {
+      const dx = bird.x - o.x, dy = bird.y - o.y, d = Math.hypot(dx, dy);
+      if (d < magR + 3) { o.x += dx / d * 25 * dt; o.y += dy / d * 25 * dt; }
+    }
+    if (!hit(o)) continue;
+    if (o.k === "flower") { o.dead = true; bird.energy = Math.min(bird.maxE * 1.5, bird.energy + nectarE); run.flowers++; burst(o.x, o.y, "#ffc93c", 8); popText(o.x, o.y + 2, "+nectar", "#fff3c2"); }
+    else if (o.k === "gold") { o.dead = true; bird.energy = Math.min(bird.maxE * 1.5, bird.energy + nectarE * 2); run.gold += 15; run.flowers++; burst(o.x, o.y, "#ffe066", 16, 12); popText(o.x, o.y + 2, "+15 pollen", "#ffe066"); }
+    else if (o.k === "updraft") { o.dead = true; bird.vy += 18; bird.stun = 0; burst(o.x, o.y, "#ffffff", 12); popText(o.x, o.y + 2, "updraft!", "#ffffff"); }
+    else if (o.k === "wasp" || o.k === "hawk" || o.k === "storm") {
+      if (bird.stun > 0 || bird.energy <= 0) continue;
+      o.dead = o.k !== "storm";
+      bird.energy -= o.k === "storm" ? dmg * 0.6 : dmg; bird.stun = o.k === "storm" ? .35 : .6; bird.flash = .4; bird.vy *= .3;
+      burst(bird.x, bird.y, o.k === "storm" ? "#c9d4ff" : "#ff5470", 12);
+      popText(bird.x, bird.y + 3, o.k === "wasp" ? "stung!" : o.k === "hawk" ? "hawk!" : "zap!", "#ff8fa3");
+    }
+  }
+  // transition to dive once falling back below peak
+  if (bird.energy <= 0 && bird.vy < -2) {
+    state = "fall";
+    objs = [];
+    spawnFallRings(bird.y);
+    popText(bird.x, bird.y + 4, "DIVE!", "#ffffff");
+  }
+  cam.y = lerp(cam.y, bird.y + H * 0.12 / PX, 1 - Math.exp(-dt * 6));
+}
+
+function updateFall(dt) {
+  steer(dt, 34);
+  const vt = Math.max(55, run.maxH / 3.2);
+  bird.vy = Math.max(bird.vy - Math.max(40, vt * 1.2) * dt, -vt);
+  bird.y += bird.vy * dt;
+  for (const o of objs) {
+    if (o.dead || o.k !== "ring") continue;
+    if (Math.abs(o.y - bird.y) < Math.abs(bird.vy * dt) + 1 && Math.abs(o.x - bird.x) < o.r) {
+      o.dead = true; run.rings++; run.fallBonus += 0.08; burst(o.x, o.y, "#ffe066", 14, 14); popText(o.x, o.y, "+8% speed", "#ffe066");
+    }
+  }
+  // streaks
+  if (Math.random() < 0.6) parts.push({ x: bird.x + rand(-1, 1), y: bird.y + 2, vx: 0, vy: 0, life: .25, max: .25, c: "rgba(255,255,255,.8)", r: .25 });
+  if (bird.y <= 0) {
+    const base = Math.sqrt(2 * 9.8 * Math.max(run.maxH, 5)) * 0.62;
+    run.entry = base * (1 + lv("dive") * 0.09) * run.fallBonus;
+    bird.vy = -run.entry; bird.y = 0;
+    objs = [];
+    run.swimSpawnedTo = -6;
+    for (let i = 0; i < 40; i++) parts.push({ x: bird.x + rand(-3, 3), y: rand(0, 1), vx: rand(-8, 8), vy: rand(6, 22), life: rand(.6, 1.2), max: 1.2, c: "#dff6ff", r: rand(.3, .7), g: 30 });
+    state = "swim";
+  }
+  cam.y = lerp(cam.y, bird.y - H * 0.18 / PX, 1 - Math.exp(-dt * 8));
+}
+
+function updateSwim(dt) {
+  steer(dt, 20);
+  const v = -bird.vy; // positive downward speed
+  const c = 0.022 * Math.pow(0.9, lv("lungs"));
+  const b = 2.6 * Math.pow(0.95, lv("lungs"));
+  let nv = v - (c * v * v + b) * dt;
+  if (bird.stun > 0) bird.stun -= dt;
+  spawnSwim(bird.y - H / PX - 10);
+  for (const o of objs) {
+    if (o.dead) continue;
+    if (o.k === "angler" || o.k === "fish") o.x += o.vx * dt;
+    if (o.k === "jelly") o.y += Math.sin(t * 2 + o.ph) * dt * 1.2;
+    if (o.deco || !hit(o)) continue;
+    if (o.k === "bubble") { o.dead = true; nv += 3.2; burst(o.x, o.y, "#bfefff", 8); popText(o.x, o.y, "+speed", "#bfefff"); }
+    else if (bird.stun <= 0) { o.dead = true; nv *= o.k === "angler" ? .55 : .7; bird.stun = .4; bird.flash = .4; burst(bird.x, bird.y, "#ff9ad5", 12); popText(bird.x, bird.y - 2, o.k === "angler" ? "chomp!" : "zap!", "#ff9ad5"); }
+  }
+  if (Math.random() < .3) parts.push({ x: bird.x + rand(-.6, .6), y: bird.y + 1, vx: rand(-.5, .5), vy: rand(2, 4), life: 1, max: 1, c: "rgba(220,245,255,.7)", r: rand(.15, .35), ring: true });
+  if (nv <= 0) {
+    nv = 0;
+    if (!run.endT) { run.endT = 1.1; popText(bird.x, bird.y - 2, Math.floor(-bird.y) + " m!", "#ffffff"); }
+  }
+  bird.vy = -nv;
+  bird.y += bird.vy * dt;
+  run.depth = Math.max(run.depth, -bird.y);
+  if (run.endT) { run.endT -= dt; if (run.endT <= 0) finishRun(); }
+  cam.y = lerp(cam.y, bird.y - H * 0.12 / PX, 1 - Math.exp(-dt * 6));
+}
+
+function updateParts(dt) {
+  for (const p of parts) {
+    p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.g) p.vy -= p.g * dt;
+    if (!p.text) { p.vx *= Math.exp(-dt * 3); if (!p.g) p.vy *= Math.exp(-dt * 3); }
+  }
+  parts = parts.filter(p => p.life > 0);
+  if (objs) objs = objs.filter(o => !o.dead && Math.abs(o.y - bird.y) < H / PX * 2 + 40);
+}
+
+function finishRun() {
+  const h = Math.floor(run.maxH), d = Math.floor(run.depth);
+  const earned = Math.round(h * 0.35 + d * 1.5 + run.flowers * 1 + run.gold);
+  const newH = h > save.bestH, newD = d > save.bestD;
+  save.bestH = Math.max(save.bestH, h); save.bestD = Math.max(save.bestD, d);
+  save.pollen += earned; persist();
+  $("rH").textContent = h + " m"; $("rD").textContent = d + " m";
+  $("rN").textContent = run.flowers; $("rS").textContent = Math.round(run.entry);
+  $("rP").textContent = "+" + earned + " pollen  ·  " + save.pollen + " total";
+  $("rHBox").classList.toggle("new", newH); $("rDBox").classList.toggle("new", newD);
+  $("rHBox").querySelector("span").textContent = newH ? "New best height!" : "Height";
+  $("rDBox").querySelector("span").textContent = newD ? "New best depth!" : "Depth";
+  state = "results"; show("results");
+}
+
+// ---------- drawing ----------
+const sy = y => H * 0.5 - (y - cam.y) * PX;
+const sx = x => W / 2 + x * PX;
+
+function drawBackground() {
+  const topY = cam.y + H * 0.5 / PX, botY = cam.y - H * 0.5 / PX;
+  const waterS = sy(0);
+  // sky
+  if (waterS > 0) {
+    const [top] = zoneColor(SKY, Math.max(0, topY));
+    const [, bot] = zoneColor(SKY, Math.max(0, botY));
+    const g = ctx.createLinearGradient(0, 0, 0, Math.min(H, waterS));
+    g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, Math.min(H, waterS));
+    // stars at altitude
+    const starA = clamp((topY - 900) / 900, 0, 1);
+    if (starA > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${starA})`;
+      for (let i = 0; i < 90; i++) {
+        const x = (i * 97.3 % 1) * W + ((i * 53) % W);
+        const y = ((i * 211 + cam.y * PX * .05) % H + H) % H;
+        ctx.fillRect(x % W, y, 1.5, 1.5);
+      }
+    }
+    // decorative clouds (parallax)
+    for (const c of deco) {
+      const yy = H * 0.5 - (c.y - cam.y * c.p) * PX * c.p;
+      if (yy < -80 || yy > Math.min(H, waterS) + 40) continue;
+      const xx = W / 2 + c.x * W * .55;
+      const a = clamp(1 - c.y / 2500, 0.15, 0.7);
+      ctx.fillStyle = `rgba(255,255,255,${a})`;
+      cloudShape(xx, yy, 40 * c.s);
+    }
+    // meadow shore near surface
+    if (waterS < H + 200) drawShore(waterS);
+  }
+  // water
+  if (waterS < H) {
+    const ws = Math.max(0, waterS);
+    const [top] = zoneColor(SEA, Math.max(0, -cam.y - H * 0.5 / PX));
+    const [, bot] = zoneColor(SEA, Math.max(0, -botY));
+    const g = ctx.createLinearGradient(0, ws, 0, H);
+    g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+    ctx.fillStyle = g; ctx.fillRect(0, ws, W, H - ws);
+    if (waterS > -10) {
+      ctx.fillStyle = "rgba(255,255,255,.55)";
+      ctx.beginPath(); ctx.moveTo(0, waterS);
+      for (let x = 0; x <= W; x += 12) ctx.lineTo(x, waterS + Math.sin(x * .04 + t * 3) * 3);
+      ctx.lineTo(W, waterS + 6); ctx.lineTo(0, waterS + 6); ctx.fill();
+    }
+    // light rays
+    const rayA = clamp(1 - (-cam.y) / 70, 0, .18);
+    if (rayA > 0) {
+      ctx.fillStyle = `rgba(200,240,255,${rayA})`;
+      for (let i = 0; i < 5; i++) {
+        const x0 = (i / 5) * W + Math.sin(t * .4 + i) * 30;
+        ctx.beginPath(); ctx.moveTo(x0, ws); ctx.lineTo(x0 + 40, ws); ctx.lineTo(x0 + 140, H); ctx.lineTo(x0 + 60, H); ctx.fill();
+      }
+    }
+  }
+}
+function cloudShape(x, y, s) {
+  ctx.beginPath();
+  ctx.arc(x, y, s * .6, 0, 7); ctx.arc(x + s * .6, y + s * .1, s * .5, 0, 7);
+  ctx.arc(x - s * .6, y + s * .15, s * .45, 0, 7); ctx.arc(x + s * .2, y - s * .3, s * .45, 0, 7);
+  ctx.fill();
+}
+function drawShore(ws) {
+  // reeds and the starting perch
+  ctx.strokeStyle = "#2f7d3a"; ctx.lineWidth = 3;
+  for (let i = 0; i < 14; i++) {
+    const x = (i / 13) * W, h = 40 + (i * 37 % 50);
+    ctx.beginPath(); ctx.moveTo(x, ws + 4); ctx.quadraticCurveTo(x + 8 + Math.sin(t + i) * 4, ws - h / 2, x + Math.sin(t * .8 + i) * 6, ws - h); ctx.stroke();
+  }
+  // lily pads
+  ctx.fillStyle = "#3fa34d";
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.ellipse(W * (.15 + i * .24), ws + 3, 24, 7, 0, 0.3, Math.PI * 2 - 0.3); ctx.fill(); }
+}
+
+function drawFlower(o) {
+  const x = sx(o.x), y = sy(o.y) + Math.sin(t * 2 + o.bob) * 3;
+  const gold = o.k === "gold";
+  ctx.save(); ctx.translate(x, y);
+  ctx.strokeStyle = "#3d8a3a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, 16); ctx.stroke();
+  const petal = gold ? "#ffd84a" : `hsl(${o.hue},80%,62%)`;
+  for (let i = 0; i < 5; i++) {
+    ctx.rotate(Math.PI * 2 / 5);
+    ctx.fillStyle = petal; ctx.beginPath(); ctx.ellipse(0, -7, 4.5, 8, 0, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = gold ? "#fff6c4" : "#ffc93c"; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 7); ctx.fill();
+  if (gold) { ctx.strokeStyle = `rgba(255,240,150,${.5 + .5 * Math.sin(t * 6)})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 18, 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+function drawWasp(o) {
+  const x = sx(o.x), y = sy(o.y);
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = "rgba(255,255,255,.6)";
+  const f = Math.sin(t * 60) * 3;
+  ctx.beginPath(); ctx.ellipse(-3, -7 - f, 4, 7, -.4, 0, 7); ctx.ellipse(3, -7 - f, 4, 7, .4, 0, 7); ctx.fill();
+  ctx.fillStyle = "#ffcc00"; ctx.beginPath(); ctx.ellipse(0, 0, 11, 6, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#1b1b1b"; for (let i = -1; i <= 1; i++) ctx.fillRect(i * 5 - 1.5, -6, 3, 12);
+  ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(16, 0); ctx.lineTo(11, 2); ctx.fill();
+  ctx.restore();
+}
+function drawHawk(o) {
+  const x = sx(o.x), y = sy(o.y);
+  ctx.save(); ctx.translate(x, y); ctx.scale(o.dir, 1);
+  const f = Math.sin(t * 10) * 10;
+  ctx.fillStyle = "#6b4a2b";
+  ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-18, -14 - f); ctx.lineTo(8, -2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-14, 12 + f); ctx.lineTo(8, 2); ctx.fill();
+  ctx.fillStyle = "#8a6239"; ctx.beginPath(); ctx.ellipse(0, 0, 18, 7, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f2e6d0"; ctx.beginPath(); ctx.arc(15, -2, 6, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f5b800"; ctx.beginPath(); ctx.moveTo(20, -3); ctx.lineTo(26, 0); ctx.lineTo(20, 1); ctx.fill();
+  ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(17, -4, 1.5, 0, 7); ctx.fill();
+  ctx.fillStyle = "#5a3d22"; ctx.beginPath(); ctx.moveTo(-17, 0); ctx.lineTo(-28, -6); ctx.lineTo(-28, 6); ctx.fill();
+  ctx.restore();
+}
+function drawStorm(o) {
+  const x = sx(o.x), y = sy(o.y);
+  ctx.fillStyle = "#4a4f6b"; cloudShape(x, y, 34);
+  ctx.fillStyle = "#5c6280"; cloudShape(x + 6, y - 6, 26);
+  if (Math.sin(t * 7 + o.x) > .6) {
+    ctx.strokeStyle = "#fff27a"; ctx.lineWidth = 3; ctx.beginPath();
+    ctx.moveTo(x, y + 14); ctx.lineTo(x - 6, y + 28); ctx.lineTo(x + 3, y + 28); ctx.lineTo(x - 4, y + 44); ctx.stroke();
+  }
+}
+function drawUpdraft(o) {
+  const x = sx(o.x), y = sy(o.y);
+  ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 3;
+  for (let i = 0; i < 3; i++) {
+    const yy = y + 10 - ((t * 40 + i * 10) % 30);
+    ctx.beginPath(); ctx.moveTo(x - 10, yy + 6); ctx.lineTo(x, yy - 4); ctx.lineTo(x + 10, yy + 6); ctx.stroke();
+  }
+}
+function drawRing(o) {
+  const x = sx(o.x), y = sy(o.y);
+  ctx.strokeStyle = "#ffd84a"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.ellipse(x, y, o.r * PX, 8, 0, 0, 7); ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,.6)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(x, y - 1, o.r * PX - 3, 6, 0, Math.PI, 7); ctx.stroke();
+}
+function drawBubble(o) {
+  const x = sx(o.x), y = sy(o.y) + Math.sin(t * 3 + o.x) * 2;
+  ctx.strokeStyle = "rgba(220,250,255,.9)"; ctx.lineWidth = 2; ctx.fillStyle = "rgba(180,235,255,.25)";
+  ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(x - 3, y - 3, 2.5, 0, 7); ctx.fill();
+}
+function drawJelly(o) {
+  const x = sx(o.x), y = sy(o.y), p = Math.sin(t * 3 + o.ph);
+  ctx.fillStyle = "rgba(255,130,210,.75)";
+  ctx.beginPath(); ctx.ellipse(x, y, 14 + p * 2, 10 - p * 2, 0, Math.PI, 0); ctx.fill();
+  ctx.strokeStyle = "rgba(255,170,230,.7)"; ctx.lineWidth = 2;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath(); ctx.moveTo(x + i * 5, y);
+    ctx.quadraticCurveTo(x + i * 5 + Math.sin(t * 4 + i) * 5, y + 10, x + i * 5, y + 20 + p * 3); ctx.stroke();
+  }
+}
+function drawAngler(o) {
+  const x = sx(o.x), y = sy(o.y), d = o.vx >= 0 ? 1 : -1;
+  ctx.save(); ctx.translate(x, y); ctx.scale(d, 1);
+  ctx.fillStyle = "#3a2a4a"; ctx.beginPath(); ctx.ellipse(0, 0, 18, 13, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-26, -9); ctx.lineTo(-26, 9); ctx.fill();
+  ctx.fillStyle = "#fff"; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(8 + i * 3, 3); ctx.lineTo(9.5 + i * 3, 8); ctx.lineTo(11 + i * 3, 3); ctx.fill(); }
+  ctx.strokeStyle = "#3a2a4a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(4, -12); ctx.quadraticCurveTo(14, -26, 22, -16); ctx.stroke();
+  const glow = ctx.createRadialGradient(22, -16, 0, 22, -16, 14);
+  glow.addColorStop(0, "rgba(255,250,170,1)"); glow.addColorStop(1, "rgba(255,250,170,0)");
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(22, -16, 14, 0, 7); ctx.fill();
+  ctx.fillStyle = "#ffe"; ctx.beginPath(); ctx.arc(8, -4, 3, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function drawFish(o) {
+  const x = sx(o.x), y = sy(o.y), d = o.vx >= 0 ? 1 : -1;
+  ctx.fillStyle = "rgba(255,180,90,.6)";
+  for (let i = 0; i < 4; i++) {
+    const fx = x - d * i * 14, fy = y + Math.sin(t * 4 + i) * 4 + (i % 2) * 8;
+    ctx.beginPath(); ctx.ellipse(fx, fy, 7, 3.5, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(fx - d * 6, fy); ctx.lineTo(fx - d * 11, fy - 4); ctx.lineTo(fx - d * 11, fy + 4); ctx.fill();
+  }
+}
+
+function drawBird() {
+  const x = sx(bird.x), y = sy(bird.y);
+  let targetAng;
+  if (state === "ascend") targetAng = bird.energy > 0 ? -Math.PI / 2 + bird.vx * 0.02 : -Math.PI / 2 + (1 - clamp(bird.vy / 10, -1, 1)) * 0.8;
+  else targetAng = Math.PI / 2 + bird.vx * 0.015;
+  bird.ang = lerp(bird.ang || -Math.PI / 2, targetAng, 0.2);
+  const diving = state !== "ascend" || bird.energy <= 0;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(bird.ang + Math.PI / 2);
+  if (bird.flash > 0 && Math.floor(bird.flash * 20) % 2) ctx.globalAlpha = .4;
+  const S = 1.7;
+  ctx.scale(S, S);
+  // wings
+  if (!diving) {
+    const f = Math.sin(t * 70);
+    ctx.fillStyle = "rgba(200,255,230,.35)";
+    ctx.beginPath(); ctx.ellipse(-10, 2, 14, 5, -0.4 + f * 0.6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, 2, 14, 5, 0.4 - f * 0.6, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(40,140,110,.85)";
+    ctx.beginPath(); ctx.ellipse(-9, 2, 11, 3.5, -0.4 - f * 0.5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(9, 2, 11, 3.5, 0.4 + f * 0.5, 0, 7); ctx.fill();
+  } else {
+    ctx.fillStyle = "#1f7a5c";
+    ctx.beginPath(); ctx.moveTo(-4, -2); ctx.lineTo(-6, 14); ctx.lineTo(-1, 10); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(6, 14); ctx.lineTo(1, 10); ctx.fill();
+  }
+  // tail
+  ctx.fillStyle = "#16624a"; ctx.beginPath(); ctx.moveTo(-3, 9); ctx.lineTo(0, 18); ctx.lineTo(3, 9); ctx.fill();
+  // body
+  const bg = ctx.createLinearGradient(-5, 0, 5, 0);
+  bg.addColorStop(0, "#19b37a"); bg.addColorStop(.5, "#5fe0a8"); bg.addColorStop(1, "#128a5d");
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(0, 2, 5.5, 10, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f1f5ea"; ctx.beginPath(); ctx.ellipse(0, 5, 3, 5, 0, 0, 7); ctx.fill();
+  // head + ruby throat
+  ctx.fillStyle = "#16a06c"; ctx.beginPath(); ctx.arc(0, -8, 4.6, 0, 7); ctx.fill();
+  ctx.fillStyle = "#e0304e"; ctx.beginPath(); ctx.ellipse(0, -5, 3.4, 2.4, 0, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = "#0b0b14"; ctx.beginPath(); ctx.arc(-2, -9, 1.1, 0, 7); ctx.arc(2, -9, 1.1, 0, 7); ctx.fill();
+  // beak
+  ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -24); ctx.stroke();
+  ctx.restore();
+}
+
+function drawParts() {
+  for (const p of parts) {
+    const a = clamp(p.life / p.max, 0, 1);
+    if (p.text) {
+      ctx.globalAlpha = a; ctx.fillStyle = p.c; ctx.font = "18px 'Lilita One', sans-serif"; ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(10,20,40,.6)"; ctx.lineWidth = 4; ctx.strokeText(p.text, sx(p.x), sy(p.y)); ctx.fillText(p.text, sx(p.x), sy(p.y));
+    } else if (p.ring) {
+      ctx.globalAlpha = a; ctx.strokeStyle = p.c; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.r * PX, 0, 7); ctx.stroke();
+    } else {
+      ctx.globalAlpha = a; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.r * PX, 0, 7); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  const pad = 16, top = 14;
+  ctx.textAlign = "left"; ctx.font = "26px 'Lilita One', sans-serif";
+  const label = state === "swim" ? Math.floor(Math.max(0, -bird.y)) + " m deep" : Math.floor(Math.max(0, bird.y)) + " m";
+  ctx.lineWidth = 5; ctx.strokeStyle = "rgba(10,20,40,.55)"; ctx.fillStyle = "#fff";
+  ctx.strokeText(label, pad, top + 24); ctx.fillText(label, pad, top + 24);
+  ctx.font = "15px 'Nunito', sans-serif"; ctx.fillStyle = "rgba(255,255,255,.9)";
+  const zn = zoneName(state === "swim" ? bird.y : bird.y);
+  ctx.strokeText(zn, pad, top + 46); ctx.fillText(zn, pad, top + 46);
+  // energy bar / speed
+  const bw = Math.min(220, W * .45), bx = W - bw - pad, by = top + 6;
+  ctx.fillStyle = "rgba(10,20,40,.45)"; roundRect(bx - 4, by - 4, bw + 8, 22, 11); ctx.fill();
+  if (state === "ascend") {
+    const k = clamp(bird.energy / bird.maxE, 0, 1.5) / 1.5;
+    ctx.fillStyle = k > .3 ? "#ffc93c" : "#ff5470"; roundRect(bx, by, bw * k, 14, 7); ctx.fill();
+    ctx.font = "13px 'Nunito', sans-serif"; ctx.fillStyle = "#fff"; ctx.textAlign = "right"; ctx.fillText("nectar", bx + bw, by + 34);
+  } else {
+    const spd = Math.abs(bird.vy), k = clamp(spd / 120, 0, 1);
+    ctx.fillStyle = "#7fe3ff"; roundRect(bx, by, bw * k, 14, 7); ctx.fill();
+    ctx.font = "13px 'Nunito', sans-serif"; ctx.fillStyle = "#fff"; ctx.textAlign = "right"; ctx.fillText(Math.round(spd) + " m/s " + (state === "fall" ? "dive" : "swim"), bx + bw, by + 34);
+  }
+  if (state === "fall" || state === "swim") {
+    ctx.textAlign = "left"; ctx.font = "15px 'Nunito', sans-serif"; ctx.fillStyle = "rgba(255,255,255,.9)";
+    const s = "peak " + Math.floor(run.maxH) + " m";
+    ctx.strokeText(s, pad, top + 66); ctx.fillText(s, pad, top + 66);
+  }
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, Math.max(w, 0.01), h, Math.min(r, w / 2)) : ctx.rect(x, y, w, h); }
+
+function drawMenuScene() {
+  // idle hover above lily pads for the menu backdrop
+  cam.y = lerp(cam.y, 6, .05);
+  bird.y = 8 + Math.sin(t * 2) * .8; bird.x = Math.sin(t * .7) * 6; bird.vy = 0; bird.energy = 1; bird.vx = Math.cos(t * .7) * 4;
+}
+
+// ---------- loop ----------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.033, (now - last) / 1000); last = now; t += dt;
+  if (bird.flash > 0) bird.flash -= dt;
+  if (state === "ascend") updateAscend(dt);
+  else if (state === "fall") updateFall(dt);
+  else if (state === "swim") updateSwim(dt);
+  else if (state === "menu" || state === "shop") { const s = state; state = "ascend"; drawMenuScene(); state = s; }
+  updateParts(dt);
+
+  ctx.clearRect(0, 0, W, H);
+  drawBackground();
+  for (const o of objs) {
+    const y = sy(o.y); if (y < -80 || y > H + 80) continue;
+    if (o.k === "flower" || o.k === "gold") drawFlower(o);
+    else if (o.k === "wasp") drawWasp(o);
+    else if (o.k === "hawk") drawHawk(o);
+    else if (o.k === "storm") drawStorm(o);
+    else if (o.k === "updraft") drawUpdraft(o);
+    else if (o.k === "ring") drawRing(o);
+    else if (o.k === "bubble") drawBubble(o);
+    else if (o.k === "jelly") drawJelly(o);
+    else if (o.k === "angler") drawAngler(o);
+    else if (o.k === "fish") drawFish(o);
+  }
+  const prev = state; if (state === "menu" || state === "shop") state = "ascend";
+  drawBird(); state = prev;
+  drawParts();
+  // deep-water vignette
+  if (bird.y < -60) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, Math.max(W, H) * .7);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,10,${clamp((-bird.y - 60) / 150, 0, .85)})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  if (state === "ascend" || state === "fall" || state === "swim") drawHUD();
+  requestAnimationFrame(frame);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+function hideAll() { ["menu", "results", "shop"].forEach(id => $(id).hidden = true); }
+function show(id) { hideAll(); $(id).hidden = false; refreshMenu(); }
+function refreshMenu() {
+  $("mBestH").textContent = save.bestH + " m"; $("mBestD").textContent = save.bestD + " m";
+  $("mPollen").textContent = save.pollen + " pollen"; $("sPollen").textContent = save.pollen + " pollen";
+  const box = $("ups"); box.innerHTML = "";
+  UPGRADES.forEach(u => {
+    const b = document.createElement("button"); b.className = "up"; b.id = "up-" + u.id;
+    const maxed = lv(u.id) >= u.max, c = cost(u);
+    b.disabled = maxed || save.pollen < c;
+    b.innerHTML = `<span class="nm">${u.name}<span class="lv">Lv ${lv(u.id)}/${u.max}</span></span><span class="ds">${u.desc}</span><span class="cost">${maxed ? "MAX" : c + " ✿"}</span>`;
+    b.addEventListener("click", () => {
+      if (lv(u.id) >= u.max || save.pollen < cost(u)) return;
+      save.pollen -= cost(u); save.lv[u.id] = lv(u.id) + 1; persist(); refreshMenu();
+    });
+    box.appendChild(b);
+  });
+}
+$("playBtn").onclick = startRun; $("againBtn").onclick = startRun; $("shopFly").onclick = startRun;
+$("shopBtn1").onclick = () => { state = "shop"; show("shop"); };
+$("shopBtn2").onclick = () => { state = "shop"; show("shop"); };
+
+bird = newBird(); objs = []; parts = []; cam = { y: 6 }; deco = makeDeco();
+run = { maxH: 0 };
+refreshMenu();
+requestAnimationFrame(frame);
+})();
+</script>
