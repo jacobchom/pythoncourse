@@ -34,19 +34,48 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 #stamina { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: min(260px, 50vw); padding: 6px 10px; display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); }
 #stamina .bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; }
 #stamina .fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ffffff, var(--gold)); transform-origin: left; }
-#toast { top: 26%; left: 50%; transform: translateX(-50%); font-family: var(--f-display); font-style: italic; font-size: clamp(26px, 5vw, 44px); text-shadow: 0 2px 18px rgba(0,0,0,.35); opacity: 0; transition: opacity .35s; text-align: center; white-space: nowrap; }
+#toast { top: 26%; left: 50%; transform: translateX(-50%); font-family: var(--f-display); font-style: italic; font-size: clamp(26px, 5vw, 44px); text-shadow: 0 2px 18px rgba(0,0,0,.35); opacity: 0; transition: opacity .35s; text-align: center; width: max-content; max-width: calc(100vw - 32px); line-height: 1.15; }
 #warn { top: 36%; left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 14px; letter-spacing: .2em; color: var(--sink); opacity: 0; transition: opacity .2s; }
 #keys { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); padding: 8px 12px; font-size: 12px; line-height: 1.6; color: var(--ink-dim); }
-#keys kbd { font-family: var(--f-data); font-size: 11px; color: var(--ink); border: 1px solid var(--glass-edge); border-radius: 4px; padding: 0 5px; }
-#arrow { width: 0; height: 0; border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 20px solid var(--gold); filter: drop-shadow(0 1px 4px rgba(0,0,0,.4)); display: none; }
-#start { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, rgba(20,40,70,.15), rgba(10,20,35,.6)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); z-index: 5; }
-#start .card { max-width: 520px; padding: 28px 30px; text-align: left; }
-#start h1 { font-family: var(--f-display); font-style: italic; font-weight: 600; font-size: clamp(44px, 9vw, 72px); margin: 0 0 4px; line-height: 1; letter-spacing: -.01em; }
-#start p { margin: 0 0 16px; color: var(--ink-dim); line-height: 1.5; max-width: 60ch; }
-#start ul { list-style: none; padding: 0; margin: 0 0 20px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
-#start ul kbd { font-family: var(--f-data); font-size: 12px; border: 1px solid var(--glass-edge); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
-#go { font: 600 16px var(--f-body); color: #13202e; background: var(--gold); border: 0; border-radius: 999px; padding: 12px 26px; cursor: pointer; }
-#go:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+/* world markers: on-screen they are a ring with a distance; off-screen they become an arrow pinned to the edge */
+.marker { position: fixed; left: 0; top: 0; pointer-events: none; display: none; --c: var(--gold); }
+.marker .tri { position: absolute; left: -11px; top: -10px; width: 0; height: 0; border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 20px solid var(--c); filter: drop-shadow(0 1px 4px rgba(0,0,0,.4)); }
+.marker .dot { position: absolute; left: -9px; top: -9px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--c); box-shadow: 0 0 8px rgba(0,0,0,.35); }
+.marker .lbl { position: absolute; left: 14px; top: -8px; font: 500 12px var(--f-data); color: var(--c); text-shadow: 0 1px 4px rgba(0,0,0,.6); white-space: nowrap; }
+.marker.lift { --c: var(--lift); }
+#reticle { position: fixed; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid rgba(255,255,255,.75); border-radius: 50%; pointer-events: none; display: none; box-shadow: 0 0 6px rgba(0,0,0,.3); }
+#reticle::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #fff; }
+#heading { position: fixed; left: 0; top: 0; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgba(255,255,255,.55); pointer-events: none; display: none; }
+#pullup { top: 42%; left: 50%; transform: translateX(-50%); font: 600 16px var(--f-data); letter-spacing: .25em; color: #fff; background: rgba(200,50,40,.75); padding: 6px 14px; border-radius: 6px; opacity: 0; transition: opacity .15s; }
+#chip { top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); padding: 6px 12px; font-size: 13px; color: var(--lift); white-space: nowrap; opacity: 0; transition: opacity .3s; }
+#coach { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); padding: 10px 14px; display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center; }
+#coach .n { font: 500 12px var(--f-data); color: var(--gold); grid-row: span 2; border: 1px solid var(--gold); border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; }
+#coach .t { font-size: 15px; font-weight: 600; }
+#coach .h { font-size: 12px; color: var(--ink-dim); }
+#coach.done .n { background: var(--gold); color: #13202e; }
+#pausebtn { position: fixed; top: calc(122px + env(safe-area-inset-top, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--glass-edge); background: var(--glass); color: var(--ink); font: 600 14px var(--f-body); display: none; cursor: pointer; }
+#pausebtn.on { display: block; }
+/* menus */
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; overflow-y: auto; background: radial-gradient(ellipse at 50% 40%, rgba(20,40,70,.15), rgba(10,20,35,.6)); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); z-index: 5; }
+.card { max-width: 540px; width: 100%; padding: 26px 28px; box-sizing: border-box; }
+.card h1 { font-family: var(--f-display); font-style: italic; font-weight: 600; font-size: clamp(44px, 9vw, 72px); margin: 0 0 6px; line-height: 1; letter-spacing: -.01em; }
+.card h2 { font-family: var(--f-display); font-style: italic; font-weight: 600; font-size: 34px; margin: 0 0 14px; }
+.card p { margin: 0 0 16px; color: var(--ink-dim); line-height: 1.5; max-width: 60ch; }
+.how { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; margin: 0 0 18px; }
+.how div { border: 1px solid var(--glass-edge); border-radius: 8px; padding: 10px 12px; font-size: 13px; color: var(--ink-dim); line-height: 1.45; }
+.how b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+.how kbd, #keys kbd { font-family: var(--f-data); font-size: 11px; color: var(--ink); border: 1px solid var(--glass-edge); border-radius: 4px; padding: 0 5px; }
+.btn { font: 600 16px var(--f-body); color: #13202e; background: var(--gold); border: 0; border-radius: 999px; padding: 12px 26px; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--glass-edge); font-size: 14px; padding: 9px 16px; }
+.btn:focus-visible, .seg button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.btn:disabled { opacity: .6; cursor: wait; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.set { display: grid; grid-template-columns: 120px 1fr; gap: 10px 14px; align-items: center; margin: 0 0 20px; font-size: 14px; }
+.set > span { color: var(--ink-dim); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--glass-edge); border-radius: 8px; overflow: hidden; }
+.seg button { font: 500 13px var(--f-body); color: var(--ink); background: transparent; border: 0; padding: 7px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--gold); color: #13202e; }
+.hint { font-size: 12px; color: var(--ink-dim); margin-top: 12px; }
 #loading { font-family: var(--f-data); font-size: 12px; color: var(--ink-dim); margin-left: 12px; }
 /* touch controls */
 #touch { position: fixed; inset: 0; pointer-events: none; display: none; }
@@ -57,8 +86,8 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 #tflap { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); width: 100px; height: 100px; }
 #tdive { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); right: calc(130px + env(safe-area-inset-right, 0px)); width: 70px; height: 70px; }
 .tbtn.on { background: rgba(255,207,90,.5); }
-@media (max-width: 640px) { #keys { display: none; } #minimap { width: 110px; height: 110px; } #rings { top: calc(136px + env(safe-area-inset-top, 0px)); } #instruments .v { font-size: 14px; } }
-@media (prefers-reduced-motion: reduce) { #toast, #warn { transition: none; } }
+@media (max-width: 640px) { #keys { display: none; } .set { grid-template-columns: 1fr; gap: 4px; } .set > span { margin-top: 8px; } #coach { bottom: calc(230px + env(safe-area-inset-bottom, 0px)); } #minimap { width: 110px; height: 110px; } #rings { top: calc(136px + env(safe-area-inset-top, 0px)); } #instruments .v { font-size: 14px; } }
+@media (prefers-reduced-motion: reduce) { #toast, #warn, #chip, #pullup { transition: none; } }
 </style>
 
 <canvas id="scene"></canvas>
@@ -74,12 +103,14 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 <div id="stamina" class="hud panel"><span>Wings</span><div class="bar"><div class="fill" id="stamfill"></div></div></div>
 <div id="toast" class="hud"></div>
 <div id="warn" class="hud">STALL</div>
-<div id="arrow" class="hud"></div>
-<div id="keys" class="hud panel">
-  <kbd>W</kbd><kbd>S</kbd> climb / dive &nbsp; <kbd>A</kbd><kbd>D</kbd> turn<br>
-  <kbd>Space</kbd> flap &nbsp; <kbd>Shift</kbd> tuck wings<br>
-  <kbd>drag</kbd> look &nbsp; <kbd>I</kbd> invert &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>M</kbd> sound
-</div>
+<div id="ringmark" class="marker"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
+<div id="liftmark" class="marker lift"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
+<div id="reticle"></div><div id="heading"></div>
+<div id="pullup" class="hud">PULL UP</div>
+<div id="chip" class="hud panel"></div>
+<div id="coach" class="hud panel" hidden><div class="n" id="coachn">1</div><div class="t" id="coacht"></div><div class="h" id="coachh"></div></div>
+<button id="pausebtn" type="button" aria-label="Pause">II</button>
+<div id="keys" class="hud panel"></div>
 
 <div id="touch">
   <div id="stick"><div id="knob"></div></div>
@@ -87,19 +118,29 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
   <div id="tdive" class="tbtn">TUCK</div>
 </div>
 
-<div id="start">
+<div id="start" class="overlay">
   <div class="card panel">
     <h1>Updraft</h1>
-    <p>You are a gull on an island coast. Flap to climb, glide to save strength, and ride rising air over sunlit slopes and under cumulus clouds. Land gently on the ground, a treetop or the sea. Hit the ground too fast and you tumble.</p>
-    <ul>
-      <li><kbd>W / ↑</kbd></li><li>Nose up, climb (hold harder to pull tighter)</li>
-      <li><kbd>S / ↓</kbd></li><li>Nose down, dive</li>
-      <li><kbd>A D / ← →</kbd></li><li>Bank and turn. Let go and the bird levels itself.</li>
-      <li><kbd>Space</kbd></li><li>Flap. Uses wing strength, which refills while you glide.</li>
-      <li><kbd>Shift</kbd></li><li>Tuck wings: less lift, much less drag. Dive fast.</li>
-      <li><kbd>Look for</kbd></li><li>Swirling dust and gulls circling: a thermal. Glide into it and circle to climb for free. Green vario means rising.</li>
-    </ul>
-    <button id="go" type="button" disabled>Building island…</button><span id="loading"></span>
+    <p>You are a gull on an island coast. Point where you want to go and the bird flies there. Flap to climb, glide to rest, and circle in rising air to climb for free.</p>
+    <div class="how" id="howto"></div>
+    <div class="row"><button id="go" class="btn" type="button" disabled>Building island…</button><span id="loading"></span></div>
+    <div class="hint" id="starthint">A short tutorial guides your first flight. Esc pauses and opens settings.</div>
+  </div>
+</div>
+
+<div id="pause" class="overlay" hidden>
+  <div class="card panel">
+    <h2>Paused</h2>
+    <div class="set">
+      <span>Steering</span><div class="seg" data-key="control"><button data-v="mouse">Mouse aim</button><button data-v="keys">Keys only</button></div>
+      <span>Help</span><div class="seg" data-key="assist"><button data-v="easy">Easy</button><button data-v="real">Realistic</button></div>
+      <span>Time of day</span><div class="seg" data-key="tod"><button data-v="morning">Morning</button><button data-v="noon">Noon</button><button data-v="sunset">Sunset</button></div>
+      <span>Graphics</span><div class="seg" data-key="quality"><button data-v="auto">Auto</button><button data-v="high">High</button><button data-v="low">Fast</button></div>
+      <span>Pitch</span><div class="seg" data-key="invert"><button data-v="false">Up = climb</button><button data-v="true">Up = dive</button></div>
+      <span>Sound</span><div class="seg" data-key="sound"><button data-v="true">On</button><button data-v="false">Off</button></div>
+    </div>
+    <div class="row"><button id="resume" class="btn" type="button">Resume</button><button id="retut" class="btn ghost" type="button">Replay tutorial</button><button id="home" class="btn ghost" type="button">Back to village</button></div>
+    <div class="hint" id="assisthint"></div>
   </div>
 </div>
 
@@ -114,6 +155,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+const $ = id => document.getElementById(id);
 // ---------------------------------------------------------------- utilities
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const rand = mulberry32(20261121);
@@ -201,12 +243,16 @@ sky.scale.setScalar(20000);
 const su = sky.material.uniforms;
 su.turbidity.value = 5; su.rayleigh.value = 1.4; su.mieCoefficient.value = 0.004; su.mieDirectionalG.value = 0.82;
 su.sunPosition.value.copy(sunDir);
-{
-  const pmrem = new THREE.PMREMGenerator(renderer);
+const pmrem = new THREE.PMREMGenerator(renderer);
+let envRT = null;
+function regenEnv() {
   const envScene = new THREE.Scene(); envScene.add(sky);
-  scene.environment = pmrem.fromScene(envScene, 0, 1, 30000).texture;
+  const rt = pmrem.fromScene(envScene, 0, 1, 30000);
+  if (envRT) envRT.dispose();
+  envRT = rt; scene.environment = rt.texture;
   scene.add(sky);
 }
+regenEnv();
 
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6b5a44, 1.1);
 scene.add(hemi);
@@ -485,6 +531,7 @@ function buildVillage() {
 
 // ---------------------------------------------------------------- clouds and thermals
 const cloudTexs = [softSprite(256, 14), softSprite(256, 10), softSprite(256, 18)];
+const cloudMats = [];
 function cloudCluster(x, y, z, size) {
   const grp = new THREE.Group();
   const n = 7 + Math.floor(rand() * 9);
@@ -495,7 +542,7 @@ function cloudCluster(x, y, z, size) {
     sp.scale.set(s * 1.6, s, 1);
     sp.position.set((rand() - 0.5) * size * 1.6, (rand() - 0.2) * size * 0.35, (rand() - 0.5) * size * 1.6);
     // flat base: lower sprites slightly greyer
-    m.color.setScalar(sp.position.y < 0 ? 0.88 : 1);
+    m.userData.base = sp.position.y < 0 ? 0.88 : 1; m.color.setScalar(m.userData.base); cloudMats.push(m);
     grp.add(sp);
   }
   grp.position.set(x, y, z);
@@ -636,7 +683,7 @@ const bird = {
 const birdMesh = buildBirdMesh(0.8);
 scene.add(birdMesh.group);
 
-const input = { pitch: 0, roll: 0, flap: false, dive: false, invert: false };
+const input = { pitch: 0, roll: 0, flap: false, dive: false, autoFlap: false };
 const F = new THREE.Vector3(), fwd = new THREE.Vector3(), up = new THREE.Vector3(), right = new THREE.Vector3(), va = new THREE.Vector3(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
 const dq = new THREE.Quaternion(), AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
 function rotLocal(axis, ang) { if (ang) { dq.setFromAxisAngle(axis, ang); bird.q.multiply(dq); } }
@@ -708,7 +755,7 @@ function physicsStep(dt) {
 
     // ---- attitude: fly-by-wire angle-of-attack command, bank command, weathervane yaw
     const auth = clamp(V / 11, 0.35, 1.6);
-    const pIn = input.pitch * (input.invert ? -1 : 1);
+    const pIn = input.pitch;
     const bank = bankAngle();
     // auto-coordinated turns: add the extra lift a banked turn needs so turning does not cost height
     const nTurn = Math.abs(bank) < 1.4 ? 1 / Math.max(Math.cos(bank), 0.4) : 1;
@@ -719,7 +766,13 @@ function physicsStep(dt) {
     const assist = (1 - Math.abs(pIn)) * (input.dive ? 0.3 : 1);
     const hold = assist * (clamp((V - vTrim) * 0.014, -0.06, 0.12) - clamp(gdot * 0.06, -0.08, 0.08));
     const aoaCmd = 0.03 + (P.cl0 + P.cla * 0.03) * (nTurn - 1) * 1.1 / P.cla + hold + (pIn > 0 ? pIn * 0.3 : pIn * 0.14);
-    const pitchRate = clamp((aoaCmd - aoa) * 5.5 * auth, -2.2, 2.2);
+    let cmd = aoaCmd;
+    if (settings.assist === 'easy') {
+      const agl = bird.pos.y - Math.max(gh, 0);
+      if (agl < 6 && bird.vel.y < 0 && !input.dive && pIn < 0.5 && V > 10) cmd += 0.1 * (1 - agl / 6); // automatic flare before touchdown
+      cmd = Math.min(cmd, 0.22); // stall guard
+    }
+    const pitchRate = clamp((cmd - aoa) * 5.5 * auth, -2.2, 2.2);
     rotLocal(AX, -pitchRate * dt);
     const bankCmd = input.roll * 0.9;
     const rollRate = clamp(wrapPi(bankCmd - bank) * 3.6, -3.2, 3.2);
@@ -788,8 +841,9 @@ function collide() {
   const n = water ? tmp.set(0, 1, 0) : terrainNormal(p.x, p.z, tmp);
   const vn = v.dot(n);
   const impact = -vn;
-  if (impact > (water ? 7 : 7.5) || speed > 26) { if (water) sfx.splash(1); crash(water ? 'Splashdown!' : 'Ouch!'); return; }
-  if (speed < (water ? 11 : 12.5) && n.y > 0.75) { if (water) sfx.splash(0.4); landAt(surf, water, false); toast(water ? 'Floating on the sea' : 'Landed', 1.4); return; }
+  const easy = settings.assist === 'easy';
+  if (impact > (water ? 7 : 7.5) + (easy ? 2 : 0) || speed > (easy ? 30 : 26)) { if (water) sfx.splash(1); crash(water ? 'Splashdown!' : 'Ouch!'); return; }
+  if (speed < (water ? 11 : 12.5) + (easy ? 2 : 0) && n.y > (easy ? 0.65 : 0.75)) { if (water) sfx.splash(0.4); landAt(surf, water, false); toast(water ? 'Floating on the sea' : 'Landed', 1.4); return; }
   // skim / slide along the surface
   p.y = surf + clearance;
   v.addScaledVector(n, -vn * 1.1);
@@ -902,7 +956,11 @@ function checkRings(a, b) {
     if (hitP.distanceTo(r.position) < 8.2) {
       if (ringIdx === 0) courseStart = clock;
       ringIdx++; sfx.chime(ringIdx); bird.stamina = Math.min(1, bird.stamina + 0.25);
-      if (ringIdx >= rings.length) { courseDone = true; const t = clock - courseStart; toast(`Course complete · ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`, 5); }
+      if (ringIdx >= rings.length) {
+        courseDone = true; const t = clock - courseStart, fmt = x => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+        const best = !settings.best || t < settings.best; if (best) { settings.best = t; saveSettings(); }
+        toast(best ? `New best · ${fmt(t)}` : `Course flown · ${fmt(t)} (best ${fmt(settings.best)})`, 5);
+      }
       else toast(`Ring ${ringIdx}`, 1);
       styleRings();
     }
@@ -979,12 +1037,21 @@ function drawMinimap() {
   mctx.restore();
 }
 
+// ---------------------------------------------------------------- settings (remembered per browser)
+const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
+const DEFAULTS = { control: 'mouse', assist: 'easy', tod: 'noon', quality: 'auto', invert: false, sound: true, tutorialDone: false, best: 0 };
+let settings = { ...DEFAULTS };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('updraft.v2') || '{}')); } catch (e) { /* storage blocked: defaults */ }
+function saveSettings() { try { localStorage.setItem('updraft.v2', JSON.stringify(settings)); } catch (e) { /* ignore */ } }
+
 // ---------------------------------------------------------------- audio
 const sfx = (() => {
-  let ctx = null, windGain, windFilter, master, muted = false, noiseBuf;
+  let ctx = null, windGain, windFilter, master, noiseBuf;
+  const vol = () => settings.sound ? 0.8 : 0;
   function init() {
-    if (ctx) return; const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-    ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = vol(); master.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = noiseBuf.getChannelData(0); let last = 0;
     for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5 + w * 0.15; }
     const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
@@ -993,49 +1060,86 @@ const sfx = (() => {
     src.connect(windFilter).connect(windGain).connect(master); src.start();
   }
   function burst(dur, freq, type, gain) {
-    if (!ctx || muted) return; const s = ctx.createBufferSource(); s.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; const g = ctx.createGain(); const t = ctx.currentTime;
+    if (!ctx || !settings.sound) return; const s = ctx.createBufferSource(); s.buffer = noiseBuf; const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; const g = ctx.createGain(); const t = ctx.currentTime;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f).connect(g).connect(master); s.start(t, Math.random()); s.stop(t + dur + 0.05);
   }
+  function tone(freq, dur, gain, delay = 0) {
+    if (!ctx || !settings.sound) return; const t = ctx.currentTime + delay, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = freq; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
   return {
-    init, toggle() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; toast(muted ? 'Sound off' : 'Sound on', 1); },
+    init, refresh() { if (master) master.gain.value = vol(); },
     wind(v) { if (!ctx) return; const t = ctx.currentTime; windGain.gain.setTargetAtTime(clamp((v / 38) ** 2 * 0.9, 0.02, 0.9), t, 0.15); windFilter.frequency.setTargetAtTime(180 + v * 28, t, 0.2); },
     flap() { burst(0.16, 520, 'lowpass', 0.35); },
     splash(a) { burst(0.5 + a * 0.4, 1600, 'highpass', 0.3 + a * 0.3); },
     thump() { burst(0.35, 160, 'lowpass', 0.9); },
-    chime(i) {
-      if (!ctx || muted) return; const t = ctx.currentTime;
-      [0, 4, 7].forEach((st, j) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = 660 * Math.pow(2, (st + (i % 5)) / 12); g.gain.setValueAtTime(0.0001, t + j * 0.07); g.gain.exponentialRampToValueAtTime(0.18, t + j * 0.07 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + j * 0.07 + 0.7); o.connect(g).connect(master); o.start(t + j * 0.07); o.stop(t + j * 0.07 + 0.8); });
-    }
+    beep(v) { tone(640 + v * 120, 0.07, 0.07); },
+    step() { tone(880, 0.12, 0.12); tone(1320, 0.2, 0.1, 0.09); },
+    chime(i) { [0, 4, 7].forEach((st, j) => tone(660 * Math.pow(2, (st + (i % 5)) / 12), 0.7, 0.18, j * 0.07)); }
   };
 })();
 
-// ---------------------------------------------------------------- input
+// ---------------------------------------------------------------- state flags
+let clock = 0, started = false, paused = false, waterMat, startClock = 0;
+const playing = () => started && !paused;
+let shake = 0, camSnap = true, camDist = isTouch ? 5.2 : 4.8;
+
+// ---------------------------------------------------------------- input: keyboard, mouse aim, touch, gamepad
 const keys = new Set();
+const aim = { yaw: 0, pitch: 0, engaged: false };
+const mouseBtn = { flap: false, dive: false };
 addEventListener('keydown', e => {
-  if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault(); return; }
-  keys.add(e.code);
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.code === 'KeyI') { input.invert = !input.invert; toast(input.invert ? 'Pitch inverted (W = dive)' : 'Pitch normal (W = climb)', 1.5); }
-  if (e.code === 'KeyR' && started) { resetToStart(); toast('Back to the village', 1.2); }
-  if (e.code === 'KeyM') sfx.toggle();
-  if (e.code === 'KeyH') { const k = document.getElementById('keys'); k.hidden = !k.hidden; }
+  if (e.repeat) return;
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (paused) resume(); else pause(); return; }
+  keys.add(e.code);
+  if (e.code === 'KeyI') { setSetting('invert', !settings.invert); toast(settings.invert ? 'Up = dive' : 'Up = climb', 1.5); }
+  if (e.code === 'KeyR' && playing()) { resetToStart(); toast('Back to the village', 1.2); }
+  if (e.code === 'KeyM') { setSetting('sound', !settings.sound); toast(settings.sound ? 'Sound on' : 'Sound off', 1); }
+  if (e.code === 'KeyH') { const k = $('keys'); k.hidden = !k.hidden; }
   if (e.code === 'KeyC') camDist = camDist > 7 ? 4.5 : camDist + 2.5;
+  if (e.code === 'KeyT' && tut.active) skipTutorial();
 });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('blur', () => keys.clear());
+addEventListener('blur', () => { keys.clear(); mouseBtn.flap = mouseBtn.dive = false; });
 
-// camera orbit by dragging
-let orbitYaw = 0, orbitPitch = 0, dragging = false, lastDrag = 0, camDist = 4.8, px = 0, py = 0;
-canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; dragging = true; px = e.clientX; py = e.clientY; canvas.setPointerCapture(e.pointerId); });
-canvas.addEventListener('pointermove', e => { if (!dragging) return; orbitYaw -= (e.clientX - px) * 0.006; orbitPitch = clamp(orbitPitch + (e.clientY - py) * 0.004, -0.6, 1.2); px = e.clientX; py = e.clientY; lastDrag = clock; });
-canvas.addEventListener('pointerup', () => { dragging = false; lastDrag = clock; });
+let orbitYaw = 0, orbitPitch = 0, dragging = false, lastDrag = -10, px = 0, py = 0;
+const mouseMode = () => settings.control === 'mouse' && !isTouch;
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch') return;
+  sfx.init();
+  if (mouseMode() && playing()) {
+    if (document.pointerLockElement !== canvas) { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* not allowed here */ } }
+    if (e.button === 0) mouseBtn.flap = true;
+    if (e.button === 2) mouseBtn.dive = true;
+    aim.engaged = true;
+    return;
+  }
+  dragging = true; px = e.clientX; py = e.clientY; canvas.setPointerCapture(e.pointerId);
+});
+addEventListener('pointerup', e => { if (e.button === 0) mouseBtn.flap = false; if (e.button === 2) mouseBtn.dive = false; dragging = false; lastDrag = clock; });
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') return;
+  if (mouseMode() && playing()) {
+    const k = 0.0026;
+    aim.yaw -= e.movementX * k;
+    aim.pitch = clamp(aim.pitch - e.movementY * k * (settings.invert ? -1 : 1), -1.15, 1.0);
+    if (Math.abs(e.movementX) + Math.abs(e.movementY) > 0) aim.engaged = true;
+    return;
+  }
+  if (!dragging) return;
+  orbitYaw -= (e.clientX - px) * 0.006; orbitPitch = clamp(orbitPitch + (e.clientY - py) * 0.004, -0.6, 1.2); px = e.clientX; py = e.clientY; lastDrag = clock;
+});
 canvas.addEventListener('wheel', e => { camDist = clamp(camDist + e.deltaY * 0.004, 3, 16); e.preventDefault(); }, { passive: false });
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas && playing() && mouseMode()) pause(); });
 
 // touch controls
-const touchUI = document.getElementById('touch'), stick = document.getElementById('stick'), knob = document.getElementById('knob');
+const touchUI = $('touch'), stick = $('stick'), knob = $('knob');
 const touchState = { x: 0, y: 0, flap: false, dive: false };
-if ('ontouchstart' in window || navigator.maxTouchPoints > 0) touchUI.classList.add('on');
+if (isTouch) { touchUI.classList.add('on'); $('pausebtn').classList.add('on'); }
 let stickId = null;
 stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); moveStick(e); });
 stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) moveStick(e); });
@@ -1047,14 +1151,28 @@ function moveStick(e) {
   touchState.x = dx; touchState.y = -dy; knob.style.transform = `translate(${dx * R * 0.6}px, ${dy * R * 0.6}px)`;
 }
 for (const [id, keyName] of [['tflap', 'flap'], ['tdive', 'dive']]) {
-  const el = document.getElementById(id);
+  const el = $(id);
   el.addEventListener('pointerdown', e => { e.preventDefault(); touchState[keyName] = true; el.classList.add('on'); el.setPointerCapture(e.pointerId); sfx.init(); });
   const off = () => { touchState[keyName] = false; el.classList.remove('on'); };
   el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off);
 }
+$('pausebtn').addEventListener('click', () => pause());
 
-const ramp = (cur, target, dt) => { const r = target === 0 ? 7 : 4.5; return damp(cur, target, r, dt); };
+const travel = { yaw: 0, pitch: 0, dir: new THREE.Vector3(0, 0, 1) };
+function updateTravel() {
+  const v = bird.vel, l = v.length();
+  if (bird.state === 'flying' && l > 3) { travel.dir.copy(v).divideScalar(l); travel.yaw = Math.atan2(v.x, v.z); travel.pitch = Math.asin(clamp(v.y / l, -1, 1)); }
+  else { travel.yaw = yawOf(bird.q); travel.pitch = 0; travel.dir.set(Math.sin(travel.yaw), 0, Math.cos(travel.yaw)); }
+}
+// mouse aim autopilot: turns "fly toward the circle" into the same stick inputs a player would give
+function autopilot() {
+  const he = wrapPi(aim.yaw - travel.yaw);
+  return { r: clamp(-he * 2.2, -1, 1), p: clamp((aim.pitch - travel.pitch) * 3.2, -1, 1) };
+}
+const ramp = (cur, target, dt) => damp(cur, target, target === 0 ? 7 : 4.5, dt);
+let usingAim = false;
 function readInput(dt) {
+  updateTravel();
   let p = 0, r = 0, flap = false, dive = false;
   if (keys.has('KeyW') || keys.has('ArrowUp')) p += 1;
   if (keys.has('KeyS') || keys.has('ArrowDown')) p -= 1;
@@ -1062,7 +1180,7 @@ function readInput(dt) {
   if (keys.has('KeyD') || keys.has('ArrowRight')) r += 1;
   if (keys.has('Space')) flap = true;
   if (keys.has('ShiftLeft') || keys.has('ShiftRight')) dive = true;
-  p += touchState.y; r += touchState.x; flap ||= touchState.flap; dive ||= touchState.dive;
+  p += touchState.y; r += touchState.x; flap ||= touchState.flap || mouseBtn.flap; dive ||= touchState.dive || mouseBtn.dive;
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const gp of pads) {
     if (!gp) continue;
@@ -1072,22 +1190,34 @@ function readInput(dt) {
     if (gp.buttons[1]?.pressed || gp.buttons[6]?.pressed) dive = true;
     if (Math.abs(gp.axes[2] || 0) > 0.15) { orbitYaw -= gp.axes[2] * dt * 2.5; lastDrag = clock; }
   }
+  if (settings.invert) p = -p;
+  const manual = Math.abs(p) > 0.05 || Math.abs(r) > 0.05;
+  usingAim = mouseMode() && aim.engaged && !manual && bird.state !== 'crashed';
+  if (usingAim) { const a = autopilot(); r = a.r; p = bird.state === 'flying' ? a.p : 0; }
+  else { aim.yaw = travel.yaw; aim.pitch = travel.pitch; }
+  // easy mode: asking to climb when slow makes the bird flap for you
+  input.autoFlap = false;
+  if (settings.assist === 'easy' && bird.state === 'flying' && p > 0.35 && bird.airspeed < 12.5 && bird.stamina > 0.08 && !dive) { flap = true; input.autoFlap = true; }
   input.pitch = ramp(input.pitch, clamp(p, -1, 1), dt);
   input.roll = ramp(input.roll, clamp(r, -1, 1), dt);
   input.flap = flap; input.dive = dive;
 }
 
-// ---------------------------------------------------------------- camera
+// ---------------------------------------------------------------- camera, speed lines, ground shadow
+scene.add(camera);
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), camFwd = new THREE.Vector3(0, 0, 1);
-let shake = 0, camSnap = true;
+function aimDir(out) { return out.set(Math.cos(aim.pitch) * Math.sin(aim.yaw), Math.sin(aim.pitch), Math.cos(aim.pitch) * Math.cos(aim.yaw)); }
+const _aim = new THREE.Vector3();
 function updateCamera(dt) {
   axes();
   if (clock - lastDrag > 1.8 && !dragging) { orbitYaw = damp(orbitYaw, 0, 2, dt); orbitPitch = damp(orbitPitch, 0, 2, dt); }
-  // follow the direction of travel, mostly horizontal, so turns feel smooth
-  const travel = bird.state === 'flying' && bird.vel.lengthSq() > 4 ? tmp.copy(bird.vel).normalize() : tmp.copy(fwd);
-  const target = tmp2.copy(travel).lerp(fwd, 0.35);
-  target.y *= 0.6; target.normalize();
-  if (camSnap) camFwd.copy(target); else camFwd.lerp(target, 1 - Math.exp(-3.2 * dt)).normalize();
+  let target, rate;
+  if (usingAim && bird.state === 'flying') { target = aimDir(tmp2); target.y *= 0.75; target.normalize(); rate = 8; }
+  else {
+    const tr = bird.state === 'flying' && bird.vel.lengthSq() > 4 ? tmp.copy(bird.vel).normalize() : tmp.copy(fwd);
+    target = tmp2.copy(tr).lerp(fwd, 0.35); target.y *= 0.6; target.normalize(); rate = 3.2;
+  }
+  if (camSnap) camFwd.copy(target); else camFwd.lerp(target, 1 - Math.exp(-rate * dt)).normalize();
   const dir = camFwd.clone().applyAxisAngle(AY, orbitYaw);
   const side = new THREE.Vector3().crossVectors(dir, AY).normalize();
   dir.applyAxisAngle(side, -orbitPitch);
@@ -1098,7 +1228,7 @@ function updateCamera(dt) {
   if (camPos.y < gh) camPos.y = gh;
   camLook.copy(bird.pos).addScaledVector(camFwd, 2.5).add(new THREE.Vector3(0, 0.35, 0));
   camera.position.copy(camPos);
-  if (shake > 0) { camera.position.add(new THREE.Vector3((Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)).multiplyScalar(shake * 0.4)); shake = Math.max(0, shake - dt * 1.6); }
+  if (shake > 0) { camera.position.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake * 0.4)); shake = Math.max(0, shake - dt * 1.6); }
   const bank = bird.state === 'flying' ? bankAngle() : 0;
   camera.up.set(0, 1, 0).applyAxisAngle(camFwd, -bank * 0.22);
   camera.lookAt(camLook);
@@ -1107,32 +1237,137 @@ function updateCamera(dt) {
   camera.updateProjectionMatrix();
 }
 
+const SL = 90, slPos = new Float32Array(SL * 6), slSeed = [];
+for (let i = 0; i < SL; i++) { const a = Math.random() * 6.28, r = 1.4 + Math.random() * 4; slSeed.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7, z: -2 - Math.random() * 30 }); }
+const slGeo = new THREE.BufferGeometry(); slGeo.setAttribute('position', new THREE.BufferAttribute(slPos, 3));
+const speedLines = new THREE.LineSegments(slGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+speedLines.frustumCulled = false; camera.add(speedLines);
+function updateSpeedLines(dt) {
+  const sp = bird.state === 'flying' ? bird.airspeed : 0, k = smooth(17, 34, sp);
+  speedLines.material.opacity = k * 0.32; speedLines.visible = k > 0.01;
+  if (!speedLines.visible) return;
+  const len = 0.4 + sp * 0.05;
+  slSeed.forEach((s, i) => {
+    s.z += sp * dt * 1.2; if (s.z > -1) s.z -= 30;
+    slPos.set([s.x, s.y, s.z, s.x, s.y, s.z - len], i * 6);
+  });
+  slGeo.attributes.position.needsUpdate = true;
+}
+
+const blobTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.8), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+scene.add(blob);
+function updateBlob() {
+  const th = terrainH(bird.pos.x, bird.pos.z), water = th < SEA, gy = water ? SEA : th;
+  const agl = bird.pos.y - gy;
+  blob.visible = agl < 45 && bird.state !== 'crashed';
+  if (!blob.visible) return;
+  const n = water ? tmp.set(0, 1, 0) : terrainNormal(bird.pos.x, bird.pos.z, tmp);
+  blob.position.set(bird.pos.x, gy + 0.04, bird.pos.z);
+  blob.quaternion.setFromUnitVectors(AZ, n);
+  blob.material.opacity = 0.55 * (1 - agl / 45);
+  blob.scale.setScalar(0.8 + agl * 0.03);
+}
+
+// ---------------------------------------------------------------- markers, warnings, tutorial
+const $m = id => { const el = $(id); return { el, tri: el.querySelector('.tri'), dot: el.querySelector('.dot'), lbl: el.querySelector('.lbl') }; };
+const ringMark = $m('ringmark'), liftMark = $m('liftmark');
+const _p = new THREE.Vector3();
+function placeMarker(m, world, label) {
+  if (!world) { m.el.style.display = 'none'; return; }
+  const v = _p.copy(world).project(camera), behind = v.z > 1;
+  let x = behind ? -v.x : v.x, y = behind ? -v.y : v.y;
+  const on = !behind && Math.abs(x) < 0.9 && Math.abs(y) < 0.85;
+  m.el.style.display = 'block';
+  m.lbl.textContent = label;
+  if (on) {
+    m.tri.style.display = 'none'; m.dot.style.display = 'block';
+    m.el.style.transform = `translate(${(x + 1) / 2 * innerWidth}px, ${(1 - y) / 2 * innerHeight}px)`;
+  } else {
+    if (behind && Math.abs(x) + Math.abs(y) < 0.01) y = -1;
+    const a = Math.atan2(y, x), s = 0.86 / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)) * 1.05);
+    m.tri.style.display = 'block'; m.dot.style.display = 'none';
+    m.tri.style.transform = `rotate(${-a + Math.PI / 2}rad)`;
+    m.el.style.transform = `translate(${(Math.cos(a) * s * 0.5 + 0.5) * innerWidth}px, ${(-Math.sin(a) * s * 0.5 + 0.5) * innerHeight}px)`;
+  }
+}
+// nearest thermal core at the bird's height (thermals lean downwind as they rise)
+const lift = { t: null, dist: 0, inside: false, pos: new THREE.Vector3() };
+function updateLift() {
+  lift.t = null; let best = 1400;
+  for (const t of thermals) {
+    if (bird.pos.y > t.top - 30) continue;
+    const y = Math.max(bird.pos.y, t.ground + 20), drift = (y - t.ground) / 4.5;
+    const x = t.x + WIND.x * drift, z = t.z + WIND.z * drift, d = Math.hypot(bird.pos.x - x, bird.pos.z - z);
+    if (d < best) { best = d; lift.t = t; lift.pos.set(x, y, z); }
+  }
+  lift.dist = best; lift.inside = !!lift.t && best < lift.t.R * 0.9;
+}
+function groundAhead() {
+  if (bird.state !== 'flying' || bird.airspeed < 13) return false;
+  for (let t = 0.4; t <= 2.2; t += 0.3) {
+    const x = bird.pos.x + bird.vel.x * t, y = bird.pos.y + bird.vel.y * t, z = bird.pos.z + bird.vel.z * t;
+    if (y < Math.max(terrainH(x, z), SEA) + 0.5) return bird.vel.y < -3 || bird.airspeed > 22;
+  }
+  return false;
+}
+
+const kind = () => isTouch ? 'touch' : mouseMode() ? 'mouse' : 'keys';
+const TUT = [
+  { t: 'Climb', h: { mouse: 'Hold the left mouse button or Space to flap.', keys: 'Hold Space to flap.', touch: 'Hold FLAP.' }, start: s => { s.y0 = bird.pos.y; }, check: s => bird.pos.y - s.y0 > 15 },
+  { t: 'Turn', h: { mouse: 'Move the mouse sideways. The bird flies toward the white circle.', keys: 'Press A or D. Let go and the bird levels out.', touch: 'Push the stick left or right.' }, start: s => { s.turn = 0; s.yaw = yawOf(bird.q); }, check: s => { const y = yawOf(bird.q); s.turn += Math.abs(wrapPi(y - s.yaw)); s.yaw = y; return s.turn > 2.4; } },
+  { t: 'Dive', h: { mouse: 'Point down and hold the right mouse button or Shift to tuck your wings. Reach 70 km/h.', keys: 'Hold S and Shift to tuck your wings. Reach 70 km/h.', touch: 'Pull the stick down and hold TUCK. Reach 70 km/h.' }, check: () => bird.airspeed * 3.6 > 70 },
+  { t: 'Ride rising air', h: { all: 'Fly to the green marker, then keep turning in a circle there. Climb 20 m without flapping.' }, start: s => { s.y0 = null; }, check: s => { if (!lift.inside || bird.flapAmp > 0.3) { s.y0 = null; return false; } if (s.y0 === null) s.y0 = bird.pos.y; return bird.pos.y - s.y0 > 20; } },
+  { t: 'Fly through a ring', h: { all: 'Follow the gold marker and fly through the ring.' }, start: s => { s.r0 = ringIdx; }, check: s => ringIdx > s.r0 || courseDone },
+  { t: 'Land', h: { all: 'Glide low and slow, then touch down gently. Flap to take off again.' }, check: () => bird.state === 'landed' },
+];
+const tut = { active: false, i: 0, s: {}, doneT: 0 };
+function startTutorial() { tut.active = true; tut.i = 0; tut.s = {}; tut.doneT = 0; TUT[0].start?.(tut.s); showTut(); $('coach').hidden = false; }
+function showTut() { const st = TUT[tut.i]; $('coachn').textContent = tut.i + 1; $('coacht').textContent = st.t; $('coachh').textContent = (st.h[kind()] || st.h.all) + (isTouch ? '' : ' (T skips)'); $('coach').classList.remove('done'); }
+function skipTutorial() { tut.active = false; $('coach').hidden = true; settings.tutorialDone = true; saveSettings(); toast('Free flight', 1.2); }
+function updateTutorial(dt) {
+  if (!tut.active || !playing()) return;
+  if (tut.doneT > 0) {
+    tut.doneT -= dt;
+    if (tut.doneT <= 0) {
+      tut.i++;
+      if (tut.i >= TUT.length) { tut.active = false; $('coach').hidden = true; settings.tutorialDone = true; saveSettings(); toast('You can fly. Explore the island.', 3); return; }
+      tut.s = {}; TUT[tut.i].start?.(tut.s); showTut();
+    }
+    return;
+  }
+  if (bird.state === 'crashed') return;
+  if (TUT[tut.i].check(tut.s, dt)) { tut.doneT = 1.3; $('coach').classList.add('done'); $('coacht').textContent = TUT[tut.i].t + ' ✓'; sfx.step(); }
+}
+
 // ---------------------------------------------------------------- HUD
-const $ = id => document.getElementById(id);
-const hud = { spd: $('spd'), alt: $('alt'), agl: $('agl'), vario: $('vario'), fill: $('stamfill'), warn: $('warn'), toast: $('toast'), dist: $('ringdist'), arrow: $('arrow') };
-let hudT = 0;
+const hud = { spd: $('spd'), alt: $('alt'), agl: $('agl'), vario: $('vario'), fill: $('stamfill'), warn: $('warn'), toast: $('toast'), dist: $('ringdist'), reticle: $('reticle'), heading: $('heading'), pull: $('pullup'), chip: $('chip') };
+let hudT = 0, beepT = 0;
+function screenOf(world) { const v = _p.copy(world).project(camera); return v.z < 1 ? [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight] : null; }
 function updateHud(dt) {
   hudT -= dt;
   if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) hud.toast.style.opacity = 0; }
   hud.fill.style.transform = `scaleX(${bird.stamina.toFixed(3)})`;
-  const stall = bird.state === 'flying' && bird.aoa > 0.3 && bird.airspeed > 2;
-  hud.warn.style.opacity = stall ? 1 : 0;
-  // ring pointer
+  const flying = bird.state === 'flying' && playing();
+  hud.warn.style.opacity = flying && bird.aoa > 0.3 && bird.airspeed > 2 ? 1 : 0;
+  hud.pull.style.opacity = flying && groundAhead() ? 1 : 0;
+  // aim circle and where the bird is actually heading
+  const showAim = flying && usingAim;
+  hud.reticle.style.display = hud.heading.style.display = showAim ? 'block' : 'none';
+  if (showAim) {
+    const a = screenOf(tmp.copy(bird.pos).addScaledVector(aimDir(_aim), 250)), h = screenOf(tmp.copy(bird.pos).addScaledVector(travel.dir, 250));
+    if (a) hud.reticle.style.transform = `translate(${a[0]}px, ${a[1]}px)`;
+    if (h) hud.heading.style.transform = `translate(${h[0]}px, ${h[1]}px)`;
+  }
   const r = rings[ringIdx];
-  if (r && !courseDone) {
-    const p = r.position.clone().project(camera);
-    const behind = p.z > 1;
-    let x = p.x, y = p.y; if (behind) { x = -x; y = -y; }
-    const onScreen = !behind && Math.abs(x) < 0.92 && Math.abs(y) < 0.88;
-    if (onScreen) hud.arrow.style.display = 'none';
-    else {
-      const a = Math.atan2(y, x), m = 0.86 / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)) * 1.05);
-      const sx = (Math.cos(a) * m * 0.5 + 0.5) * innerWidth, sy = (-Math.sin(a) * m * 0.5 + 0.5) * innerHeight;
-      hud.arrow.style.display = 'block';
-      hud.arrow.style.left = (sx - 11) + 'px'; hud.arrow.style.top = (sy - 10) + 'px';
-      hud.arrow.style.transform = `rotate(${-a + Math.PI / 2}rad)`;
-    }
-  } else hud.arrow.style.display = 'none';
+  placeMarker(ringMark, started && r && !courseDone ? r.position : null, r ? `${Math.round(r.position.distanceTo(bird.pos))} m` : '');
+  const showLift = started && lift.t && !lift.inside && bird.state === 'flying' && (lift.dist < 900 || (tut.active && tut.i === 3));
+  placeMarker(liftMark, showLift ? lift.pos : null, `lift ${Math.round(lift.dist)} m`);
+  hud.chip.style.opacity = flying && lift.inside ? 1 : 0;
+  if (lift.inside) hud.chip.textContent = bird.vario > 0.3 ? 'Rising air · keep circling' : 'Rising air · turn tighter to stay in it';
+  // variometer beeps, like a paraglider's
+  beepT -= dt;
+  if (flying && bird.vario > 0.5 && beepT <= 0) { sfx.beep(bird.vario); beepT = 1 / (1.4 + bird.vario * 1.1); }
   if (hudT > 0) return; hudT = 0.1;
   const gh = terrainH(bird.pos.x, bird.pos.z);
   hud.spd.textContent = `${Math.round((bird.state === 'flying' ? bird.airspeed : 0) * 3.6)} km/h`;
@@ -1141,25 +1376,24 @@ function updateHud(dt) {
   const v = bird.state === 'flying' ? bird.vario : 0;
   hud.vario.textContent = `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)} m/s`;
   hud.vario.className = 'v ' + (v > 0.4 ? 'up' : v < -2.5 ? 'down' : '');
-  if (r && !courseDone) hud.dist.textContent = `next ${Math.round(r.position.distanceTo(bird.pos))} m`;
-  else if (courseDone) hud.dist.textContent = 'course flown';
+  hud.dist.textContent = courseDone ? 'course flown' : settings.best ? `best ${Math.floor(settings.best / 60)}:${String(Math.floor(settings.best % 60)).padStart(2, '0')}` : 'fly them in order';
   drawMinimap();
 }
 
 // ---------------------------------------------------------------- bird visuals
+let birdFold = 0;
 function updateBirdVisual(dt) {
   const g = birdMesh.group;
   g.position.copy(bird.pos);
   g.quaternion.copy(bird.q);
   let flap = 0, elbow = 0, sweep = 0, fold = 0;
-  if (bird.state === 'landed') { fold = 1; }
+  if (bird.state === 'landed') fold = 1;
   else if (bird.state === 'crashed') { flap = Math.sin(clock * 30) * 0.6; sweep = 0.3; }
   else {
     const a = bird.flapAmp;
     flap = Math.sin(bird.flapPhase) * 0.85 * a;
     elbow = Math.sin(bird.flapPhase - 0.9) * 0.5 * a;
     sweep = (1 - bird.ext) * 1.05 + (1 - a) * clamp((bird.airspeed - 16) / 25, 0, 0.35);
-    // turbulence flutter and pull-up flex
     flap += Math.sin(clock * 9) * 0.015 * (1 - a) + clamp(bird.aoa, -0.2, 0.4) * 0.25 * (1 - a);
   }
   birdFold = damp(birdFold, fold, 6, dt);
@@ -1167,34 +1401,112 @@ function updateBirdVisual(dt) {
   birdMesh.legs.visible = bird.state === 'landed' && !bird.onWater;
   birdMesh.body.position.y = bird.state === 'landed' ? 0.06 : 0;
 }
-let birdFold = 0;
+
+// ---------------------------------------------------------------- time of day
+const TOD = {
+  morning: { el: 13, az: 105, turb: 7, ray: 2.2, mie: 0.006, sun: 0xffd9b0, si: 2.9, hs: 0xc4d4ec, hg: 0x5e5040, hi: 1.0, fog: 0xc6cfd9, exp: 0.6, zen: 0x4a78b0, hor: 0xd3dbe4, cloud: 0xfff1e4 },
+  noon: { el: 34, az: 215, turb: 5, ray: 1.4, mie: 0.004, sun: 0xfff0dc, si: 3.4, hs: 0xcfe3ff, hg: 0x6b5a44, hi: 1.1, fog: 0xa9c6e2, exp: 0.55, zen: 0x3d6fae, hor: 0xbcd4ea, cloud: 0xffffff },
+  sunset: { el: 5, az: 250, turb: 9, ray: 2.6, mie: 0.009, sun: 0xffa868, si: 2.7, hs: 0x9fb2d6, hg: 0x5a4436, hi: 0.8, fog: 0xc9ad9c, exp: 0.62, zen: 0x36598f, hor: 0xe2b494, cloud: 0xffd6b8 }
+};
+function applyTimeOfDay(name) {
+  const t = TOD[name] || TOD.noon;
+  sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - t.el), THREE.MathUtils.degToRad(t.az));
+  su.sunPosition.value.copy(sunDir); su.turbidity.value = t.turb; su.rayleigh.value = t.ray; su.mieCoefficient.value = t.mie;
+  sun.color.set(t.sun); sun.intensity = t.si;
+  hemi.color.set(t.hs); hemi.groundColor.set(t.hg); hemi.intensity = t.hi;
+  FOG_COLOR.set(t.fog); renderer.toneMappingExposure = t.exp;
+  if (waterMat) { waterMat.uniforms.uZenith.value.set(t.zen); waterMat.uniforms.uHorizon.value.set(t.hor); }
+  const cc = new THREE.Color(t.cloud);
+  for (const m of cloudMats) m.color.copy(cc).multiplyScalar(m.userData.base);
+  regenEnv();
+}
+
+// ---------------------------------------------------------------- graphics quality (auto lowers itself if frames are slow)
+const qual = { level: -1, ema: 16, since: 0 };
+function setQualityLevel(l) {
+  if (qual.level === l) return; qual.level = l; qual.since = 0;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  renderer.setPixelRatio([dpr, Math.min(dpr, 1.25), Math.min(dpr, 0.8)][l]);
+  renderer.setSize(innerWidth, innerHeight);
+  const size = l === 0 ? 2048 : 1024;
+  if (sun.shadow.mapSize.x !== size) { sun.shadow.mapSize.set(size, size); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  sun.castShadow = l < 2;
+}
+function applyQuality() { setQualityLevel(settings.quality === 'low' ? 2 : settings.quality === 'high' ? 0 : (isTouch ? 1 : 0)); }
+function monitorQuality(rawDt) {
+  if (settings.quality !== 'auto' || !playing() || document.hidden) return;
+  qual.ema = lerp(qual.ema, rawDt * 1000, 0.05); qual.since += rawDt;
+  if (qual.since > 4 && qual.ema > 27 && qual.level < 2) { setQualityLevel(qual.level + 1); toast('Graphics lowered for smoother flight', 1.6); }
+}
+
+// ---------------------------------------------------------------- settings menu
+const assistText = { easy: 'Easy: the bird will not stall, flaps for you when you ask to climb while slow, flares before touchdown, and forgives harder landings.', real: 'Realistic: you manage speed, stalls and landings yourself.' };
+function syncMenu() {
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(String(settings[seg.dataset.key]) === b.dataset.v))));
+  $('assisthint').textContent = assistText[settings.assist];
+  const kp = $('keys');
+  kp.innerHTML = mouseMode()
+    ? '<kbd>mouse</kbd> steer &nbsp; <kbd>click</kbd>/<kbd>Space</kbd> flap &nbsp; <kbd>right-click</kbd>/<kbd>Shift</kbd> tuck<br><kbd>WASD</kbd> steer directly &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>Esc</kbd> menu'
+    : '<kbd>W</kbd><kbd>S</kbd> climb / dive &nbsp; <kbd>A</kbd><kbd>D</kbd> turn<br><kbd>Space</kbd> flap &nbsp; <kbd>Shift</kbd> tuck &nbsp; <kbd>drag</kbd> look &nbsp; <kbd>Esc</kbd> menu';
+}
+function setSetting(key, v) {
+  settings[key] = v; saveSettings(); syncMenu();
+  if (key === 'tod') applyTimeOfDay(v);
+  if (key === 'quality') { qual.level = -1; applyQuality(); }
+  if (key === 'sound') sfx.refresh();
+  if (key === 'control') aim.engaged = false;
+}
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  let v = b.dataset.v; if (v === 'true') v = true; else if (v === 'false') v = false;
+  setSetting(seg.dataset.key, v);
+}));
+function pause() { if (!started || paused) return; paused = true; keys.clear(); mouseBtn.flap = mouseBtn.dive = false; syncMenu(); $('pause').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); $('resume').focus(); }
+function resume() {
+  if (!paused) return; paused = false; $('pause').hidden = true; frame.last = performance.now();
+  if (mouseMode()) { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* ignore */ } }
+}
+$('resume').addEventListener('click', resume);
+$('retut').addEventListener('click', () => { resume(); startTutorial(); });
+$('home').addEventListener('click', () => { resume(); resetToStart(); });
 
 // ---------------------------------------------------------------- main loop
-let clock = 0, started = false, waterMat;
 const FIXED = 1 / 120; let acc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - (frame.last || now)) / 1000); frame.last = now;
+  const raw = (now - (frame.last || now)) / 1000, dt = Math.min(0.05, raw); frame.last = now;
   clock += dt; gustT += dt;
-  readInput(dt);
-  if (started) { acc += dt; while (acc >= FIXED) { physicsStep(FIXED); acc -= FIXED; } }
+  if (playing()) {
+    readInput(dt);
+    acc += dt; while (acc >= FIXED) { physicsStep(FIXED); acc -= FIXED; }
+  } else updateTravel();
   updateBirdVisual(dt);
   updateFlock(dt);
   updateMotes(dt);
   updateParts(dt);
   if (!started) { orbitYaw += dt * 0.12; lastDrag = clock; }
   updateCamera(dt);
+  updateSpeedLines(dt);
+  updateBlob();
+  updateLift();
+  updateTutorial(dt);
   sun.position.copy(bird.pos).addScaledVector(sunDir, 600); sun.target.position.copy(bird.pos);
   waterMat.uniforms.uTime.value = clock;
-  sfx.wind(bird.state === 'flying' ? bird.airspeed : 0);
+  sfx.wind(bird.state === 'flying' && playing() ? bird.airspeed : 0);
   updateHud(dt);
+  monitorQuality(raw);
   renderer.render(scene, camera);
 }
-
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
 // ---------------------------------------------------------------- boot
 const loading = $('loading');
+$('howto').innerHTML = isTouch
+  ? '<div><b>Steer</b>Left stick. Let go to fly straight.</div><div><b>Climb</b>Hold FLAP.</div><div><b>Dive</b>Stick down, hold TUCK.</div><div><b>Rest</b>Glide, and circle where the green marker shows rising air.</div>'
+  : '<div><b>Steer</b>Move the mouse. The bird flies to the circle. Or use <kbd>WASD</kbd>.</div><div><b>Flap</b>Hold <kbd>click</kbd> or <kbd>Space</kbd>.</div><div><b>Dive</b>Hold <kbd>right-click</kbd> or <kbd>Shift</kbd>.</div><div><b>Rest</b>Glide, and circle where the green marker shows rising air.</div>';
+if (isTouch) $('starthint').textContent = settings.tutorialDone ? 'Tap II to pause and change settings.' : 'A short tutorial guides your first flight. Tap II to pause and change settings.';
+else if (settings.tutorialDone) $('starthint').textContent = 'Esc pauses and opens settings. Replay the tutorial from there.';
 const steps = [
   ['shaping terrain', () => { buildHeights(); village = findVillage(); }],
   ['painting land', buildTerrain],
@@ -1203,22 +1515,34 @@ const steps = [
   ['building the village', buildVillage],
   ['raising thermals', () => { buildThermals(); buildMotes(); }],
   ['placing rings', () => { buildRings(); buildFlock(); buildMinimap(); }],
+  ['setting the sun', () => { applyTimeOfDay(settings.tod); applyQuality(); syncMenu(); }],
 ];
 let si = 0;
 function boot() {
   if (si < steps.length) { loading.textContent = steps[si][0] + '…'; setTimeout(() => { steps[si][1](); si++; boot(); }, 16); return; }
   loading.textContent = '';
   resetToStart();
-  camPos.copy(bird.pos).add(new THREE.Vector3(0, 3, -8));
-  const go = $('go'); go.disabled = false; go.textContent = 'Start flying'; go.focus();
-  window.__updraft = { bird, input, terrainH, windAt, thermals, rings, village, get ringIdx() { return ringIdx; },
-    sim(sec, inp) { Object.assign(input, inp); for (let t = 0; t < sec; t += FIXED) physicsStep(FIXED); return { state: bird.state, y: +bird.pos.y.toFixed(1), agl: +(bird.pos.y - Math.max(0, terrainH(bird.pos.x, bird.pos.z))).toFixed(1), v: +bird.airspeed.toFixed(1), vy: +bird.vel.y.toFixed(2), aoa: +bird.aoa.toFixed(3), bank: +(bankAngle() * 57.3).toFixed(0), pitch: +(Math.asin(fwd.y) * 57.3).toFixed(0), yaw: +(yawOf(bird.q) * 57.3).toFixed(0), stam: +bird.stamina.toFixed(2) }; },
-    reset: resetToStart, freeze(v) { started = !v; } };
+  const go = $('go'); go.disabled = false; go.textContent = settings.tutorialDone ? 'Fly' : 'Start flying'; go.focus();
+  window.__updraft = {
+    bird, input, aim, settings, terrainH, windAt, thermals, rings, village, lift, tut, get ringIdx() { return ringIdx; },
+    sim(sec, inp) {
+      const useAim = inp.aim; Object.assign(input, { pitch: 0, roll: 0, flap: false, dive: false }, inp);
+      for (let t = 0; t < sec; t += FIXED) {
+        if (useAim) { updateTravel(); const a = autopilot(); input.roll = a.r; input.pitch = a.p; input.flap = !!inp.flap || (settings.assist === 'easy' && a.p > 0.35 && bird.airspeed < 12.5 && bird.stamina > 0.08); }
+        physicsStep(FIXED);
+      }
+      updateTravel();
+      return { state: bird.state, y: +bird.pos.y.toFixed(1), agl: +(bird.pos.y - Math.max(0, terrainH(bird.pos.x, bird.pos.z))).toFixed(1), v: +bird.airspeed.toFixed(1), vy: +bird.vel.y.toFixed(2), aoa: +bird.aoa.toFixed(3), bank: +(bankAngle() * 57.3).toFixed(0), pitch: +(Math.asin(fwd.y) * 57.3).toFixed(0), yaw: +(yawOf(bird.q) * 57.3).toFixed(0), tyaw: +(travel.yaw * 57.3).toFixed(0), stam: +bird.stamina.toFixed(2) };
+    },
+    reset: resetToStart, freeze(v) { paused = v; }, setSetting
+  };
   requestAnimationFrame(frame);
 }
 $('go').addEventListener('click', () => {
   sfx.init(); started = true; $('start').hidden = true; orbitYaw = 0; lastDrag = -10;
-  toast(touchUI.classList.contains('on') ? 'Hold FLAP to climb' : 'Hold Space to flap', 2.5);
+  if (mouseMode()) { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* ignore */ } aim.engaged = true; }
+  if (!settings.tutorialDone) startTutorial();
+  else toast(isTouch ? 'Hold FLAP to climb' : mouseMode() ? 'Move the mouse to steer' : 'Hold Space to flap', 2.5);
 });
 boot();
 </script>
