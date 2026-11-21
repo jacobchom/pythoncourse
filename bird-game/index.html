@@ -31,9 +31,6 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 #minimap { display: block; width: 150px; height: 150px; border-radius: 6px; }
 #rings { top: calc(176px + env(safe-area-inset-top, 0px)); line-height: 1.5; right: calc(12px + env(safe-area-inset-right, 0px)); padding: 7px 12px; font-family: var(--f-data); font-size: 13px; text-align: right; }
 #rings b { color: var(--gold); font-weight: 500; }
-#stamina { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: min(260px, 50vw); padding: 6px 10px; display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); }
-#stamina .bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; }
-#stamina .fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ffffff, var(--gold)); transform-origin: left; }
 #toast { top: 26%; left: 50%; transform: translateX(-50%); font-family: var(--f-display); font-style: italic; font-size: clamp(26px, 5vw, 44px); text-shadow: 0 2px 18px rgba(0,0,0,.35); opacity: 0; transition: opacity .35s; text-align: center; width: max-content; max-width: calc(100vw - 32px); line-height: 1.15; }
 #warn { top: 36%; left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 14px; letter-spacing: .2em; color: var(--sink); opacity: 0; transition: opacity .2s; }
 #keys { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); padding: 8px 12px; font-size: 12px; line-height: 1.6; color: var(--ink-dim); }
@@ -103,7 +100,6 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 </div>
 <div id="mapwrap" class="hud panel"><canvas id="minimap" width="300" height="300"></canvas></div>
 <div id="rings" class="hud panel">Catches <b class="hl" id="huntcount">0</b> · <span id="huntscore">0</span> pts<br>top <span id="topspd">0</span> km/h<br>Rings <b id="ringcount">0/12</b> <span id="ringdist"></span></div>
-<div id="stamina" class="hud panel"><span>Wings</span><div class="bar"><div class="fill" id="stamfill"></div></div></div>
 <div id="toast" class="hud"></div>
 <div id="warn" class="hud">STALL</div>
 <div id="ringmark" class="marker"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
@@ -822,16 +818,16 @@ function physicsStep(dt) {
 
   // ---- flapping
   const canFlap = input.flap && bird.ext > 0.5;
-  if (canFlap) bird.flapAmp = damp(bird.flapAmp, 1, 10, dt); else bird.flapAmp = damp(bird.flapAmp, 0, 5, dt);
+  if (canFlap) bird.flapAmp = damp(bird.flapAmp, 1, 10, dt); else bird.flapAmp = damp(bird.flapAmp, 0, 14, dt);
   if (bird.flapAmp > 0.02) {
     const prev = Math.sin(bird.flapPhase);
-    bird.flapPhase += dt * Math.PI * 2 * (3.6 + (bird.stamina < 0.1 ? -1 : 0));
+    bird.flapPhase += dt * Math.PI * 2 * 3.6;
     const down = Math.max(0, -Math.cos(bird.flapPhase)); // power stroke while wings travel down
-    const weak = bird.stamina > 0.02 ? 1 : 0.3;
+    const weak = 1;
     const lowSpeed = 1 + 0.9 * clamp(1 - V / 14, 0, 1);
     const f = P.flapForce * down * bird.flapAmp * weak * lowSpeed;
     F.addScaledVector(fwd, f * 0.9).addScaledVector(up, f * (0.25 + 0.4 * clamp(1 - V / 12, 0, 1)));
-    if (canFlap) bird.stamina = Math.max(0, bird.stamina - dt * 0.075);
+
     if (prev > 0 && Math.sin(bird.flapPhase) <= 0 && canFlap) sfx.flap();
   } else {
     bird.stamina = Math.min(1, bird.stamina + dt * (0.055 + 0.04 * clamp(wind.y / 3, 0, 1)));
@@ -1372,7 +1368,6 @@ canvas.addEventListener('pointerdown', e => {
   sfx.init();
   if (mouseMode() && playing()) {
     if (document.pointerLockElement !== canvas) { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (err) { /* not allowed here */ } }
-    if (e.button === 0) mouseBtn.flap = true;
     if (e.button === 2) mouseBtn.dive = true;
     aim.engaged = true;
     return;
@@ -1454,7 +1449,7 @@ function readInput(dt) {
   if (keys.has('KeyD') || keys.has('ArrowRight')) r += 1;
   if (keys.has('Space')) flap = true;
   if (keys.has('ShiftLeft') || keys.has('ShiftRight')) dive = true;
-  p += touchState.y; r += touchState.x; flap ||= touchState.flap || mouseBtn.flap; dive ||= touchState.dive || mouseBtn.dive;
+  p += touchState.y; r += touchState.x; flap ||= touchState.flap; dive ||= touchState.dive || mouseBtn.dive;
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const gp of pads) {
     if (!gp) continue;
@@ -1472,8 +1467,6 @@ function readInput(dt) {
   // easy mode strike assist: once you are committed to a target, the falcon leads it like a real one does
   ({ p, r } = strikeAssist(p, r));
   // easy mode: asking to climb when slow makes the bird flap for you
-  input.autoFlap = false;
-  if (settings.assist === 'easy' && bird.state === 'flying' && p > 0.35 && bird.airspeed < 15 && bird.stamina > 0.08 && !dive) { flap = true; input.autoFlap = true; }
   input.pitch = ramp(input.pitch, clamp(p, -1, 1), dt);
   input.roll = ramp(input.roll, clamp(r, -1, 1), dt);
   input.flap = flap; input.dive = dive;
@@ -1590,7 +1583,7 @@ function groundAhead() {
 
 const kind = () => isTouch ? 'touch' : mouseMode() ? 'mouse' : 'keys';
 const TUT = [
-  { t: 'Climb', h: { mouse: 'Hold the left mouse button or Space to flap.', keys: 'Hold Space to flap.', touch: 'Hold FLAP.' }, start: s => { s.y0 = bird.pos.y; }, check: s => bird.pos.y - s.y0 > 15 },
+  { t: 'Climb', h: { mouse: 'Hold Space to flap. Let go to glide.', keys: 'Hold Space to flap. Let go to glide.', touch: 'Hold FLAP. Let go to glide.' }, start: s => { s.y0 = bird.pos.y; }, check: s => bird.pos.y - s.y0 > 15 },
   { t: 'Turn', h: { mouse: 'Move the mouse sideways. The falcon flies toward the white circle.', keys: 'Press A or D. Let go and the falcon levels out.', touch: 'Push the stick left or right.' }, start: s => { s.turn = 0; s.yaw = yawOf(bird.q); }, check: s => { const y = yawOf(bird.q); s.turn += Math.abs(wrapPi(y - s.yaw)); s.yaw = y; return s.turn > 2.4; } },
   { t: 'Gain height', h: { all: 'Fly to the green marker and circle inside the rising air. Climb 25 m without flapping.' }, start: s => { s.y0 = null; }, check: s => { if (!lift.inside || bird.flapAmp > 0.3) { s.y0 = null; return false; } if (s.y0 === null) s.y0 = bird.pos.y; return bird.pos.y - s.y0 > 25; } },
   { t: 'Stoop', h: { mouse: 'Point steeply down and hold right-click or Shift to fold your wings. Reach 160 km/h.', keys: 'Hold S and Shift to fold your wings and dive. Reach 160 km/h.', touch: 'Pull the stick down and hold TUCK. Reach 160 km/h.' }, check: () => bird.airspeed * 3.6 > 160 },
@@ -1617,13 +1610,12 @@ function updateTutorial(dt) {
 }
 
 // ---------------------------------------------------------------- HUD
-const hud = { spd: $('spd'), alt: $('alt'), agl: $('agl'), vario: $('vario'), fill: $('stamfill'), warn: $('warn'), toast: $('toast'), dist: $('ringdist'), reticle: $('reticle'), heading: $('heading'), pull: $('pullup'), chip: $('chip') };
+const hud = { spd: $('spd'), alt: $('alt'), agl: $('agl'), vario: $('vario'), warn: $('warn'), toast: $('toast'), dist: $('ringdist'), reticle: $('reticle'), heading: $('heading'), pull: $('pullup'), chip: $('chip') };
 let hudT = 0, beepT = 0;
 function screenOf(world) { const v = _p.copy(world).project(camera); return v.z < 1 ? [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight] : null; }
 function updateHud(dt) {
   hudT -= dt;
   if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) hud.toast.style.opacity = 0; }
-  hud.fill.style.transform = `scaleX(${bird.stamina.toFixed(3)})`;
   const flying = bird.state === 'flying' && playing();
   hud.warn.style.opacity = flying && bird.aoa > 0.3 && bird.airspeed > 2 ? 1 : 0;
   hud.pull.style.opacity = flying && !input.strike && groundAhead() ? 1 : 0;
@@ -1720,13 +1712,13 @@ function monitorQuality(rawDt) {
 }
 
 // ---------------------------------------------------------------- settings menu
-const assistText = { easy: 'Easy: no stalls, auto-flap when you ask to climb while slow, the falcon leads its target in the last 70 m of a strike, bigger catch radius, flare before touchdown, gentler landings.', real: 'Realistic: you manage speed, stalls and landings yourself.' };
+const assistText = { easy: 'Easy: no stalls, the falcon leads its target in the last 70 m of a strike, bigger catch radius, flare before touchdown, gentler landings.', real: 'Realistic: you manage speed, stalls and landings yourself.' };
 function syncMenu() {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(String(settings[seg.dataset.key]) === b.dataset.v))));
   $('assisthint').textContent = assistText[settings.assist];
   const kp = $('keys');
   kp.innerHTML = mouseMode()
-    ? '<kbd>mouse</kbd> steer &nbsp; <kbd>click</kbd>/<kbd>Space</kbd> flap &nbsp; <kbd>right-click</kbd>/<kbd>Shift</kbd> tuck<br><kbd>WASD</kbd> steer directly &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>Esc</kbd> menu'
+    ? '<kbd>mouse</kbd> steer &nbsp; <kbd>Space</kbd> flap &nbsp; <kbd>right-click</kbd>/<kbd>Shift</kbd> tuck<br><kbd>WASD</kbd> steer directly &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>Esc</kbd> menu'
     : '<kbd>W</kbd><kbd>S</kbd> climb / dive &nbsp; <kbd>A</kbd><kbd>D</kbd> turn<br><kbd>Space</kbd> flap &nbsp; <kbd>Shift</kbd> tuck &nbsp; <kbd>drag</kbd> look &nbsp; <kbd>Esc</kbd> menu';
 }
 function setSetting(key, v) {
@@ -1785,7 +1777,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 const loading = $('loading');
 $('howto').innerHTML = isTouch
   ? '<div><b>Steer</b>Left stick. Let go to fly straight.</div><div><b>Climb</b>Hold FLAP, or circle in rising air (green).</div><div><b>Stoop</b>Stick down, hold TUCK.</div><div><b>Hunt</b>Dive through the red diamond to catch it.</div>'
-  : '<div><b>Steer</b>Move the mouse. The falcon flies to the circle. Or <kbd>WASD</kbd>.</div><div><b>Climb</b>Hold <kbd>click</kbd> / <kbd>Space</kbd>, or circle in rising air.</div><div><b>Stoop</b>Hold <kbd>right-click</kbd> / <kbd>Shift</kbd> and point down.</div><div><b>Hunt</b>Dive through the red diamond to catch it.</div>';
+  : '<div><b>Steer</b>Move the mouse. The falcon flies to the circle. Or <kbd>WASD</kbd>.</div><div><b>Climb</b>Hold <kbd>Space</kbd> to flap. Let go to glide.</div><div><b>Stoop</b>Hold <kbd>right-click</kbd> / <kbd>Shift</kbd> and point down.</div><div><b>Hunt</b>Dive through the red diamond to catch it.</div>';
 if (isTouch) $('starthint').textContent = settings.tutorialDone ? 'Tap II to pause and change settings.' : 'A short tutorial guides your first flight. Tap II to pause and change settings.';
 else if (settings.tutorialDone) $('starthint').textContent = 'Esc pauses and opens settings. Replay the tutorial from there.';
 const steps = [
@@ -1811,7 +1803,7 @@ function boot() {
       const useAim = inp.aim; Object.assign(input, { pitch: 0, roll: 0, flap: false, dive: false }, inp);
       for (let t = 0; t < sec; t += FIXED) {
         if (inp.hunt) { updatePrey(FIXED); updateTravel(); const a = strikeAssist(inp.pitch || 0, inp.roll || 0); input.pitch = a.p; input.roll = a.r; }
-        if (useAim) { updateTravel(); const a = autopilot(); input.roll = a.r; input.pitch = a.p; input.flap = !!inp.flap || (settings.assist === 'easy' && a.p > 0.35 && bird.airspeed < 15 && bird.stamina > 0.08); }
+        if (useAim) { updateTravel(); const a = autopilot(); input.roll = a.r; input.pitch = a.p; input.flap = !!inp.flap; }
         physicsStep(FIXED);
       }
       updateTravel();
