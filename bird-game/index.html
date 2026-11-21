@@ -29,7 +29,7 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 #vario.up { color: var(--lift); } #vario.down { color: var(--sink); }
 #mapwrap { top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); padding: 6px; }
 #minimap { display: block; width: 150px; height: 150px; border-radius: 6px; }
-#rings { top: calc(176px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px)); padding: 7px 12px; font-family: var(--f-data); font-size: 13px; text-align: right; }
+#rings { top: calc(176px + env(safe-area-inset-top, 0px)); line-height: 1.5; right: calc(12px + env(safe-area-inset-right, 0px)); padding: 7px 12px; font-family: var(--f-data); font-size: 13px; text-align: right; }
 #rings b { color: var(--gold); font-weight: 500; }
 #stamina { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: min(260px, 50vw); padding: 6px 10px; display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); }
 #stamina .bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; }
@@ -43,6 +43,9 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .marker .dot { position: absolute; left: -9px; top: -9px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--c); box-shadow: 0 0 8px rgba(0,0,0,.35); }
 .marker .lbl { position: absolute; left: 14px; top: -8px; font: 500 12px var(--f-data); color: var(--c); text-shadow: 0 1px 4px rgba(0,0,0,.6); white-space: nowrap; }
 .marker.lift { --c: var(--lift); }
+.marker.prey { --c: #ff7a66; }
+.marker.prey .dot { width: 20px; height: 20px; left: -12px; top: -12px; border-radius: 3px; transform: rotate(45deg); }
+#rings .hl { color: #ff9d8c; }
 #reticle { position: fixed; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid rgba(255,255,255,.75); border-radius: 50%; pointer-events: none; display: none; box-shadow: 0 0 6px rgba(0,0,0,.3); }
 #reticle::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #fff; }
 #heading { position: fixed; left: 0; top: 0; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgba(255,255,255,.55); pointer-events: none; display: none; }
@@ -99,11 +102,12 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
   <span class="k">Vario</span><span class="v" id="vario">0.0 m/s</span>
 </div>
 <div id="mapwrap" class="hud panel"><canvas id="minimap" width="300" height="300"></canvas></div>
-<div id="rings" class="hud panel">Rings <b id="ringcount">0/12</b><br><span id="ringdist"></span></div>
+<div id="rings" class="hud panel">Catches <b class="hl" id="huntcount">0</b> · <span id="huntscore">0</span> pts<br>top <span id="topspd">0</span> km/h<br>Rings <b id="ringcount">0/12</b> <span id="ringdist"></span></div>
 <div id="stamina" class="hud panel"><span>Wings</span><div class="bar"><div class="fill" id="stamfill"></div></div></div>
 <div id="toast" class="hud"></div>
 <div id="warn" class="hud">STALL</div>
 <div id="ringmark" class="marker"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
+<div id="preymark" class="marker prey"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
 <div id="liftmark" class="marker lift"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
 <div id="reticle"></div><div id="heading"></div>
 <div id="pullup" class="hud">PULL UP</div>
@@ -121,7 +125,7 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 <div id="start" class="overlay">
   <div class="card panel">
     <h1>Updraft</h1>
-    <p>You are a gull on an island coast. Point where you want to go and the bird flies there. Flap to climb, glide to rest, and circle in rising air to climb for free.</p>
+    <p>You are a peregrine falcon, the fastest animal alive. Climb high on rising air, pick out a pigeon, a rabbit or a fish, then fold your wings and stoop on it at over 300 km/h.</p>
     <div class="how" id="howto"></div>
     <div class="row"><button id="go" class="btn" type="button" disabled>Building island…</button><span id="loading"></span></div>
     <div class="hint" id="starthint">A short tutorial guides your first flight. Esc pauses and opens settings.</div>
@@ -631,35 +635,66 @@ function windAt(p, groundH, out = _w) {
 }
 
 // ---------------------------------------------------------------- bird model
-function buildBirdMesh(scale = 1) {
-  const std = (hex, rough = 0.75) => new THREE.MeshStandardMaterial({ color: hex, roughness: rough, side: THREE.DoubleSide });
-  const white = std(0xf3f3ef), grey = std(0x9aa5b1), dark = std(0x1f2226), beakM = std(0xf0b430, 0.5), legM = std(0xe39a52);
+function barTexture(base, bar, n, wavy = 1) {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, 128, 128); g.strokeStyle = bar; g.lineWidth = 128 / n * 0.32;
+  for (let i = 0; i < n; i++) { const y = (i + 0.5) * 128 / n; g.beginPath(); for (let x = 0; x <= 128; x += 8) g.lineTo(x, y + Math.sin(x * 0.15 + i) * 2 * wavy); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const BIRD_KINDS = {
+  gull: { falcon: false, body: 0xf3f3ef, back: 0x9aa5b1, head: 0xf3f3ef, wing: 0x9aa5b1, tip: 0x1f2226, tail: 0xf3f3ef, beak: 0xf0b430, legs: 0xe39a52 },
+  falcon: { falcon: true, body: 0xe9e1cf, back: 0x46515c, head: 0x24282d, wing: 0x56616c, tip: 0x2a3036, tail: 0x4b5560, beak: 0x3a3f45, legs: 0xf2c230 }
+};
+function buildBirdMesh(scale = 1, kind = 'gull') {
+  const K = BIRD_KINDS[kind], FAL = K.falcon;
+  const std = (hex, rough = 0.75, map = null) => new THREE.MeshStandardMaterial({ color: map ? 0xffffff : hex, map, roughness: rough, side: THREE.DoubleSide });
+  const dark = std(0x1c1f23), legM = std(K.legs);
+  const bodyM = FAL ? std(0, 0.8, barTexture('#ece4d2', '#5d5248', 11)) : std(K.body);
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const sph = new THREE.SphereGeometry(1, 22, 16);
   const add = (geo, mat, sx, sy, sz, x, y, z, parent = body) => { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
-  add(sph, white, 0.13, 0.12, 0.38, 0, 0, 0);
-  add(sph, grey, 0.115, 0.06, 0.3, 0, 0.065, -0.02);
-  add(sph, white, 0.1, 0.1, 0.12, 0, 0.07, 0.34);
-  const beak = add(new THREE.ConeGeometry(0.028, 0.14, 8).rotateX(Math.PI / 2), beakM, 1, 1, 1, 0, 0.05, 0.5);
-  add(sph, std(0xd2402c), 0.012, 0.012, 0.012, 0, 0.035, 0.49);
-  add(sph, dark, 0.017, 0.017, 0.017, 0.065, 0.1, 0.4); add(sph, dark, 0.017, 0.017, 0.017, -0.065, 0.1, 0.4);
-  // tail
-  const ts = new THREE.Shape(); ts.moveTo(-0.07, 0); ts.lineTo(0.07, 0); ts.lineTo(0.12, -0.22); ts.lineTo(0, -0.25); ts.lineTo(-0.12, -0.22); ts.closePath();
-  const tail = new THREE.Mesh(new THREE.ShapeGeometry(ts).rotateX(Math.PI / 2), white); tail.position.set(0, 0.02, -0.3); tail.castShadow = true; body.add(tail);
-  // legs (only visible when standing)
+  add(sph, bodyM, FAL ? 0.12 : 0.13, 0.12, FAL ? 0.36 : 0.38, 0, 0, 0);
+  add(sph, std(K.back), 0.112, 0.068, 0.3, 0, 0.062, -0.02);
+  add(sph, std(K.head), 0.1, 0.1, 0.115, 0, 0.07, 0.33);
+  if (FAL) {
+    const cheek = std(0xf2ede3);
+    for (const s of [1, -1]) {
+      add(sph, cheek, 0.045, 0.06, 0.05, s * 0.06, 0.035, 0.37);           // pale cheek patch
+      add(sph, std(K.head), 0.018, 0.055, 0.025, s * 0.082, 0.03, 0.385);   // dark "moustache" stripe
+      add(sph, std(0xf2c230, 0.5), 0.026, 0.026, 0.02, s * 0.07, 0.1, 0.4); // yellow eye ring
+      add(sph, dark, 0.02, 0.02, 0.016, s * 0.078, 0.1, 0.405);
+    }
+    add(sph, std(0xf2c230, 0.5), 0.032, 0.026, 0.03, 0, 0.065, 0.43);      // cere
+    const hook = add(new THREE.ConeGeometry(0.026, 0.075, 8).rotateX(Math.PI / 2), std(K.beak, 0.4), 1, 1, 1, 0, 0.055, 0.47);
+    hook.rotation.x = 0.45;
+  } else {
+    add(new THREE.ConeGeometry(0.028, 0.14, 8).rotateX(Math.PI / 2), std(K.beak, 0.5), 1, 1, 1, 0, 0.05, 0.5);
+    add(sph, std(0xd2402c), 0.012, 0.012, 0.012, 0, 0.035, 0.49);
+    add(sph, dark, 0.017, 0.017, 0.017, 0.065, 0.1, 0.4); add(sph, dark, 0.017, 0.017, 0.017, -0.065, 0.1, 0.4);
+  }
+  const ts = new THREE.Shape();
+  if (FAL) { ts.moveTo(-0.05, 0); ts.lineTo(0.05, 0); ts.lineTo(0.075, -0.26); ts.lineTo(0, -0.27); ts.lineTo(-0.075, -0.26); }
+  else { ts.moveTo(-0.07, 0); ts.lineTo(0.07, 0); ts.lineTo(0.12, -0.22); ts.lineTo(0, -0.25); ts.lineTo(-0.12, -0.22); }
+  ts.closePath();
+  const tailGeo = new THREE.ShapeGeometry(ts).rotateX(Math.PI / 2);
+  const tailM = FAL ? std(0, 0.8, barTexture('#56606a', '#2b3036', 6, 0)) : std(K.tail);
+  if (FAL) { const uv = tailGeo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 4 + 0.5, uv.getY(i) * 4 + 1.2); }
+  const tail = new THREE.Mesh(tailGeo, tailM); tail.position.set(0, 0.02, -0.29); tail.castShadow = true; body.add(tail);
   const legs = new THREE.Group(); body.add(legs);
-  for (const s of [1, -1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 5), legM); l.position.set(s * 0.05, -0.17, 0.02); legs.add(l); const f = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.01, 0.08), legM); f.position.set(s * 0.05, -0.25, 0.05); legs.add(f); }
+  for (const s of [1, -1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.16, 5), legM); l.position.set(s * 0.05, -0.17, 0.02); legs.add(l); const f = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.012, 0.09), legM); f.position.set(s * 0.05, -0.25, 0.05); legs.add(f); }
   const wingShape = pts => { const s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) s.lineTo(pts[i][0], pts[i][1]); s.closePath(); return new THREE.ExtrudeGeometry(s, { depth: 0.012, bevelEnabled: false }).rotateX(Math.PI / 2); };
-  const innerG = wingShape([[0, 0.11], [0.2, 0.1], [0.44, 0.07], [0.44, -0.12], [0.2, -0.16], [0, -0.18]]);
-  const outerG = wingShape([[0, 0.07], [0.3, 0.035], [0.3, -0.1], [0, -0.12]]);
-  const tipG = wingShape([[0.3, 0.035], [0.47, -0.02], [0.52, -0.07], [0.42, -0.1], [0.3, -0.1]]);
+  const elbowX = FAL ? 0.36 : 0.44;
+  const innerG = FAL ? wingShape([[0, 0.1], [0.2, 0.09], [0.36, 0.07], [0.36, -0.09], [0.2, -0.13], [0, -0.17]]) : wingShape([[0, 0.11], [0.2, 0.1], [0.44, 0.07], [0.44, -0.12], [0.2, -0.16], [0, -0.18]]);
+  const outerG = FAL ? wingShape([[0, 0.07], [0.26, 0.035], [0.26, -0.075], [0, -0.09]]) : wingShape([[0, 0.07], [0.3, 0.035], [0.3, -0.1], [0, -0.12]]);
+  const tipG = FAL ? wingShape([[0.26, 0.035], [0.48, -0.05], [0.57, -0.13], [0.42, -0.1], [0.26, -0.075]]) : wingShape([[0.3, 0.035], [0.47, -0.02], [0.52, -0.07], [0.42, -0.1], [0.3, -0.1]]);
+  const wingM = std(K.wing), tipM = std(K.tip);
   const wings = [];
   for (const s of [1, -1]) {
     const shoulder = new THREE.Group(); shoulder.position.set(s * 0.09, 0.05, 0.06); body.add(shoulder);
     const mk = (geo, mat, parent) => { const m = new THREE.Mesh(geo, mat); if (s < 0) m.scale.x = -1; m.castShadow = true; parent.add(m); return m; };
-    mk(innerG, grey, shoulder);
-    const elbow = new THREE.Group(); elbow.position.set(s * 0.44, 0, 0); shoulder.add(elbow);
-    mk(outerG, grey, elbow); mk(tipG, dark, elbow);
+    mk(innerG, wingM, shoulder);
+    const elbow = new THREE.Group(); elbow.position.set(s * elbowX, 0, 0); shoulder.add(elbow);
+    mk(outerG, wingM, elbow); mk(tipG, tipM, elbow);
     wings.push({ s, shoulder, elbow });
   }
   g.scale.setScalar(scale);
@@ -674,18 +709,20 @@ function poseWings(b, flap, elbowFlap, sweep, fold) {
 }
 
 // ---------------------------------------------------------------- player bird physics
-const P = { m: 1.0, g: 9.81, rho: 1.225, S: 0.22, cl0: 0.35, cla: 4.6, cd0: 0.022, k: 0.07, bodyCdA: 0.0035, flapForce: 14 };
+// peregrine falcon: ~0.9 kg, ~1.1 m span, cruises ~55 km/h, stoops past 300 km/h with wings tucked
+const P = { m: 0.9, g: 9.81, rho: 1.225, S: 0.12, cl0: 0.35, cla: 4.6, cd0: 0.02, k: 0.065, bodyCdA: 0.0012, flapForce: 13, gMax: 10 };
 const bird = {
   pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(),
   state: 'flying', stamina: 1, flapPhase: 0, flapAmp: 0, ext: 1, aoa: 0, airspeed: 0, crashT: 0, landY: 0, onWater: false,
   safe: { pos: new THREE.Vector3(), q: new THREE.Quaternion() }, safeT: 0, vario: 0, lastGamma: 0, flapping: false
 };
-const birdMesh = buildBirdMesh(0.8);
+const birdMesh = buildBirdMesh(0.68, 'falcon'); // drawn slightly larger than life so it reads on screen
 scene.add(birdMesh.group);
 
-const input = { pitch: 0, roll: 0, flap: false, dive: false, autoFlap: false };
+const input = { pitch: 0, roll: 0, flap: false, dive: false, autoFlap: false, strike: false };
 const F = new THREE.Vector3(), fwd = new THREE.Vector3(), up = new THREE.Vector3(), right = new THREE.Vector3(), va = new THREE.Vector3(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
 const dq = new THREE.Quaternion(), AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
+const _hd = new THREE.Vector3(), _hq = new THREE.Quaternion();
 function rotLocal(axis, ang) { if (ang) { dq.setFromAxisAngle(axis, ang); bird.q.multiply(dq); } }
 function axes() { fwd.set(0, 0, 1).applyQuaternion(bird.q); up.set(0, 1, 0).applyQuaternion(bird.q); right.set(-1, 0, 0).applyQuaternion(bird.q); }
 function bankAngle() { return Math.atan2(-right.y, up.y); }
@@ -733,8 +770,8 @@ function physicsStep(dt) {
   va.copy(bird.vel).sub(wind);
   const V = va.length();
   bird.airspeed = V;
-  bird.ext = damp(bird.ext, input.dive ? 0.15 : 1, 7, dt);
-  const Seff = P.S * (0.28 + 0.72 * bird.ext);
+  bird.ext = damp(bird.ext, input.dive ? 0.04 : 1, input.dive ? 5 : 3.5, dt);
+  const Seff = P.S * (0.17 + 0.83 * bird.ext);
   F.set(0, -P.m * P.g, 0);
   let aoa = 0;
   if (V > 0.3) {
@@ -749,7 +786,7 @@ function physicsStep(dt) {
     const q = 0.5 * P.rho * V * V;
     const vdir = tmp.copy(va).divideScalar(V);
     const liftDir = tmp2.crossVectors(right, vdir).normalize();
-    F.addScaledVector(liftDir, q * Seff * Cl);
+    F.addScaledVector(liftDir, clamp(q * Seff * Cl, -4 * P.m * P.g, P.gMax * P.m * P.g)); // a falcon pulls hard out of a stoop, but not infinitely
     F.addScaledVector(vdir, -q * (Seff * Cd + P.bodyCdA));
     F.addScaledVector(right, -q * 0.03 * Math.sin(beta));
 
@@ -762,14 +799,14 @@ function physicsStep(dt) {
     // instinctive speed hold + flight-path damping (suppresses the phugoid), fades out as the player pitches
     const gamma = Math.asin(clamp(va.y / V, -1, 1));
     const gdot = clamp((gamma - bird.lastGamma) / dt, -3, 3); bird.lastGamma = gamma;
-    const vTrim = input.dive ? 30 : 12.5;
-    const assist = (1 - Math.abs(pIn)) * (input.dive ? 0.3 : 1);
-    const hold = assist * (clamp((V - vTrim) * 0.014, -0.06, 0.12) - clamp(gdot * 0.06, -0.08, 0.08));
+    const vTrim = 15.5;
+    const assist = (1 - Math.abs(pIn)) * (input.dive ? 0 : 1);
+    const hold = assist * (clamp((V - vTrim) * 0.02, -0.06, 0.12) - clamp(gdot * 0.13, -0.12, 0.12) + clamp((-0.07 - gamma) * 0.3, -0.08, 0.08));
     const aoaCmd = 0.03 + (P.cl0 + P.cla * 0.03) * (nTurn - 1) * 1.1 / P.cla + hold + (pIn > 0 ? pIn * 0.3 : pIn * 0.14);
     let cmd = aoaCmd;
     if (settings.assist === 'easy') {
       const agl = bird.pos.y - Math.max(gh, 0);
-      if (agl < 6 && bird.vel.y < 0 && !input.dive && pIn < 0.5 && V > 10) cmd += 0.1 * (1 - agl / 6); // automatic flare before touchdown
+      if (agl < 6 && bird.vel.y < 0 && !input.dive && !input.strike && pIn < 0.5 && V > 10) cmd += 0.1 * (1 - agl / 6); // automatic flare before touchdown
       cmd = Math.min(cmd, 0.22); // stall guard
     }
     const pitchRate = clamp((cmd - aoa) * 5.5 * auth, -2.2, 2.2);
@@ -807,10 +844,20 @@ function physicsStep(dt) {
   if (bird.pos.y > 1600) F.y -= (bird.pos.y - 1600) * 0.05;
 
   bird.vel.addScaledVector(F, dt / P.m);
+  // strike homing (easy mode): bend the flight path toward the intercept point, at most ~90 deg/s
+  if (input.strike) {
+    const v = bird.vel.length(), cur = tmp.copy(bird.vel).divideScalar(v), ang = cur.angleTo(strikeAim);
+    if (ang > 1e-4) {
+      const nd = _hd.copy(cur).lerp(strikeAim, Math.min(1, 1.6 * dt / ang)).normalize();
+      _hq.setFromUnitVectors(cur, nd); bird.vel.copy(nd).multiplyScalar(v); bird.q.premultiply(_hq);
+    }
+  }
   const prevPos = tmp2.copy(bird.pos);
   bird.pos.addScaledVector(bird.vel, dt);
   bird.vario = damp(bird.vario, bird.vel.y, 2, dt);
   checkRings(prevPos, bird.pos);
+  checkCatch();
+  if (bird.state !== 'flying') return;
   collide();
 
   bird.safeT -= dt;
@@ -857,6 +904,7 @@ function landAt(y, water, perched) {
   bird.q.copy(headingQuat(yawOf(bird.q), 0));
 }
 function takeoff() {
+  if (hunt.carry && hunt.carryT > 0) hunt.carryT = Math.min(hunt.carryT, 0.01);
   axes();
   bird.state = 'flying';
   bird.q.copy(headingQuat(yawOf(bird.q), 0.35));
@@ -875,14 +923,14 @@ function crash(msg) {
 function respawn() {
   bird.state = 'flying';
   bird.pos.copy(bird.safe.pos); bird.q.copy(headingQuat(yawOf(bird.safe.q), 0));
-  axes(); bird.vel.copy(fwd).multiplyScalar(14); bird.stamina = Math.max(bird.stamina, 0.6); camSnap = true;
+  axes(); bird.vel.copy(fwd).multiplyScalar(16); bird.stamina = Math.max(bird.stamina, 0.6); camSnap = true;
 }
 function resetToStart() {
   const yaw = Math.atan2(PEAK.x - village.x, PEAK.y - village.z);
   bird.pos.set(village.x - Math.sin(yaw) * 220, 0, village.z - Math.cos(yaw) * 220);
   bird.pos.y = Math.max(terrainH(bird.pos.x, bird.pos.z), 0) + 70;
   bird.q.copy(headingQuat(yaw, 0)); axes();
-  bird.vel.copy(fwd).multiplyScalar(14);
+  bird.vel.copy(fwd).multiplyScalar(16);
   bird.state = 'flying'; bird.stamina = 1;
   bird.safe.pos.copy(bird.pos); bird.safe.q.copy(bird.q); camSnap = true;
 }
@@ -1006,6 +1054,215 @@ function updateFlock(dt) {
   }
 }
 
+// ---------------------------------------------------------------- prey: pigeons, rabbits, fish
+const prey = [], preyFlocks = [];
+const hunt = { count: 0, score: 0, top: 0, target: null, pickT: 0, carry: null, carryT: 0 };
+const PREY_INFO = { bird: { name: 'Pigeon', base: 120 }, rabbit: { name: 'Rabbit', base: 90 }, fish: { name: 'Fish', base: 70 } };
+const preyGeo = { sph: new THREE.SphereGeometry(1, 14, 10) };
+const pm = (hex, opts = {}) => new THREE.MeshStandardMaterial({ color: hex, roughness: 0.8, side: THREE.DoubleSide, ...opts });
+const preyMats = { pigeon: pm(0x8a94a3), pigeonWing: pm(0x6f7987), pigeonNeck: pm(0x5d7f78), beak: pm(0x333333), rabbit: pm(0x8b6e52), rabbitBelly: pm(0xd8c7ad), white: pm(0xf4f1ea), dark: pm(0x111111), fish: pm(0xb9c6d1, { metalness: 0.55, roughness: 0.35 }), fishBack: pm(0x3d5566, { metalness: 0.4, roughness: 0.4 }) };
+function part(parent, mat, sx, sy, sz, x, y, z, geo = preyGeo.sph) { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; }
+const pigeonWingGeo = (() => { const s = new THREE.Shape(); s.moveTo(0, 0.06); s.lineTo(0.2, 0.03); s.lineTo(0.27, -0.04); s.lineTo(0.12, -0.08); s.lineTo(0, -0.07); s.closePath(); return new THREE.ShapeGeometry(s).rotateX(Math.PI / 2); })();
+const finGeo = (() => { const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(0.12, 0.1); s.lineTo(0.12, -0.1); s.closePath(); return new THREE.ShapeGeometry(s); })();
+function makePigeon() {
+  const g = new THREE.Group();
+  part(g, preyMats.pigeon, 0.075, 0.07, 0.15, 0, 0, 0);
+  part(g, preyMats.pigeonNeck, 0.055, 0.055, 0.06, 0, 0.035, 0.1);
+  part(g, preyMats.pigeon, 0.045, 0.045, 0.05, 0, 0.06, 0.15);
+  part(g, preyMats.beak, 0.012, 0.012, 0.03, 0, 0.055, 0.2);
+  part(g, preyMats.pigeonWing, 0.05, 0.015, 0.09, 0, 0.01, -0.17);
+  const wings = [];
+  for (const s of [1, -1]) { const w = new THREE.Group(); w.position.set(s * 0.05, 0.03, 0.02); const m = new THREE.Mesh(pigeonWingGeo, preyMats.pigeonWing); if (s < 0) m.scale.x = -1; w.add(m); g.add(w); wings.push({ s, w }); }
+  g.scale.setScalar(2.0);
+  return { g, wings };
+}
+function makeRabbit() {
+  const g = new THREE.Group();
+  part(g, preyMats.rabbit, 0.12, 0.11, 0.18, 0, 0.12, 0);
+  part(g, preyMats.rabbitBelly, 0.09, 0.07, 0.12, 0, 0.07, 0.03);
+  part(g, preyMats.rabbit, 0.075, 0.075, 0.085, 0, 0.21, 0.15);
+  for (const s of [1, -1]) { const e = part(g, preyMats.rabbit, 0.022, 0.085, 0.014, s * 0.03, 0.32, 0.12); e.rotation.x = -0.3; part(g, preyMats.dark, 0.012, 0.012, 0.012, s * 0.05, 0.23, 0.2); }
+  part(g, preyMats.white, 0.04, 0.04, 0.04, 0, 0.15, -0.18);
+  g.scale.setScalar(2.6);
+  return { g };
+}
+function makeFish() {
+  const g = new THREE.Group();
+  part(g, preyMats.fish, 0.05, 0.075, 0.24, 0, 0, 0);
+  part(g, preyMats.fishBack, 0.04, 0.03, 0.2, 0, 0.05, 0);
+  const tail = new THREE.Mesh(finGeo, preyMats.fishBack); tail.rotation.y = Math.PI / 2; tail.position.set(0, 0, -0.24); g.add(tail);
+  const dorsal = new THREE.Mesh(finGeo, preyMats.fishBack); dorsal.rotation.set(0, Math.PI / 2, Math.PI / 2); dorsal.scale.setScalar(0.6); dorsal.position.set(0, 0.08, -0.02); g.add(dorsal);
+  g.scale.setScalar(2.8);
+  return { g };
+}
+function randomLand(minH, maxH, maxSlope, near = null, radius = 0) {
+  for (let i = 0; i < 400; i++) {
+    const a = rand() * 6.283, r = near ? Math.sqrt(rand()) * radius : Math.sqrt(rand()) * ISLAND_R * 0.85;
+    const x = (near ? near.x : 0) + Math.cos(a) * r, z = (near ? near.z : 0) + Math.sin(a) * r, h = terrainH(x, z);
+    if (h > minH && h < maxH && slopeAt(x, z) < maxSlope) return new THREE.Vector3(x, h, z);
+  }
+  return null;
+}
+function randomShallows() {
+  for (let i = 0; i < 2000; i++) {
+    const a = rand() * 6.283, r = ISLAND_R * (0.6 + rand() * 0.5), x = Math.cos(a) * r, z = Math.sin(a) * r, h = terrainH(x, z);
+    if (h < -1.5 && h > -12) return new THREE.Vector3(x, 0, z);
+  }
+  return new THREE.Vector3(ISLAND_R, -0.12, 0);
+}
+function newWaypoint(f, awayFrom = null) {
+  let p;
+  if (awayFrom) { const d = f.center.clone().sub(awayFrom).setY(0).normalize(); p = f.center.clone().addScaledVector(d, 350); }
+  else p = randomLand(4, 300, 2, f.home, 700) || f.home.clone();
+  f.way.set(p.x, Math.max(terrainH(p.x, p.z), 0) + 35 + rand() * 120, p.z);
+}
+function buildPrey() {
+  const homes = [village.clone()];
+  for (let i = 0; i < 6; i++) homes.push(randomLand(5, 200, 0.6) || village.clone());
+  homes.forEach((home, fi) => {
+    const f = { home, center: home.clone().setY(Math.max(home.y, 0) + 80), vel: new THREE.Vector3(), way: new THREE.Vector3(), alarm: 0 };
+    newWaypoint(f); preyFlocks.push(f);
+    for (let i = 0; i < 6; i++) {
+      const m = makePigeon(); scene.add(m.g);
+      prey.push({ type: 'bird', mesh: m, flock: f, pos: f.center.clone().add(new THREE.Vector3((rand() - 0.5) * 20, (rand() - 0.5) * 6, (rand() - 0.5) * 20)), vel: new THREE.Vector3(0, 0, 12), off: new THREE.Vector3((rand() - 0.5) * 16, (rand() - 0.5) * 6, (rand() - 0.5) * 16), alive: true, fleeT: 0, jinkT: 0, jink: new THREE.Vector3(), phase: rand() * 6 });
+    }
+  });
+  for (let i = 0; i < 28; i++) {
+    const p = randomLand(4, 180, 0.28, i < 12 ? village : null, 700); if (!p) continue;
+    const m = makeRabbit(); scene.add(m.g);
+    prey.push({ type: 'rabbit', mesh: m, pos: p, vel: new THREE.Vector3(), heading: rand() * 6.28, speed: 0, mode: 'graze', modeT: rand() * 3, hop: 0, alive: true });
+  }
+  for (let i = 0; i < 28; i++) {
+    const p = randomShallows(); const m = makeFish(); scene.add(m.g);
+    prey.push({ type: 'fish', mesh: m, pos: p, vel: new THREE.Vector3(), heading: rand() * 6.28, mode: 'swim', modeT: 2 + rand() * 5, alive: true });
+  }
+}
+function respawnPrey(p) {
+  p.alive = true; p.mesh.g.visible = true;
+  if (p.type === 'bird') { p.pos.copy(p.flock.center).add(p.off); p.fleeT = 0; }
+  else if (p.type === 'rabbit') { const q = randomLand(4, 180, 0.28); if (q) p.pos.copy(q); p.mode = 'graze'; }
+  else { p.pos.copy(randomShallows()); p.mode = 'swim'; }
+  if (p.pos.distanceTo(bird.pos) < 150) { p.alive = false; p.mesh.g.visible = false; p.respawnT = 5; }
+}
+const _pv = new THREE.Vector3(), _pd = new THREE.Vector3();
+function updatePrey(dt) {
+  const fp = bird.pos, fs = bird.state === 'flying' ? bird.vel.length() : 0;
+  for (const f of preyFlocks) {
+    f.alarm = Math.max(0, f.alarm - dt);
+    _pd.copy(f.way).sub(f.center); const d = _pd.length();
+    if (d < 40) newWaypoint(f);
+    f.vel.lerp(_pd.normalize().multiplyScalar(f.alarm > 0 ? 18 : 12), 1 - Math.exp(-0.8 * dt));
+    f.center.addScaledVector(f.vel, dt);
+    const gh = Math.max(terrainH(f.center.x, f.center.z), 0);
+    if (f.center.y < gh + 30) f.center.y += (gh + 30 - f.center.y) * dt;
+  }
+  for (const p of prey) {
+    if (!p.alive) { p.respawnT -= dt; if (p.respawnT <= 0) respawnPrey(p); continue; }
+    const g = p.mesh.g, dx = p.pos.x - fp.x, dz = p.pos.z - fp.z, hd = Math.hypot(dx, dz), dist = Math.hypot(hd, p.pos.y - fp.y);
+    g.visible = dist < 1100;
+    if (p.type === 'bird') {
+      const f = p.flock;
+      if (dist < 70 && fs > 10) { if (p.fleeT <= 0 && f.alarm <= 0) newWaypoint(f, fp); p.fleeT = 3; f.alarm = 6; }
+      if (p.fleeT > 0) {
+        p.fleeT -= dt; p.jinkT -= dt;
+        if (p.jinkT <= 0) { p.jinkT = 0.45 + rand() * 0.5; p.jink.set(rand() - 0.5, (rand() - 0.5) * 0.5, rand() - 0.5).normalize(); }
+        _pv.copy(p.pos).sub(fp).normalize().multiplyScalar(0.8).addScaledVector(p.jink, 0.7).normalize().multiplyScalar(21);
+      } else {
+        _pv.copy(f.center).add(p.off).sub(p.pos).multiplyScalar(0.9);
+        if (_pv.length() > 17) _pv.setLength(17);
+        _pv.addScaledVector(f.vel, 0.5);
+      }
+      const gh = Math.max(terrainH(p.pos.x, p.pos.z), 0);
+      if (p.pos.y < gh + 10) _pv.y += (gh + 10 - p.pos.y) * 2;
+      p.vel.lerp(_pv, 1 - Math.exp(-2.5 * dt));
+      p.pos.addScaledVector(p.vel, dt);
+      if (!g.visible) continue;
+      g.position.copy(p.pos); g.lookAt(_pd.copy(p.pos).add(p.vel));
+      p.phase += dt * (p.fleeT > 0 ? 26 : 15);
+      const flap = Math.sin(p.phase) * 0.9;
+      for (const w of p.mesh.wings) w.w.rotation.z = w.s * flap;
+    } else if (p.type === 'rabbit') {
+      if (hd < 45 && fp.y - p.pos.y < 70 && fs > 6 && p.mode !== 'run') { p.mode = 'run'; p.modeT = 3.5; p.heading = Math.atan2(dx, dz); p.zig = 0; }
+      p.modeT -= dt;
+      if (p.mode === 'run') { p.speed = 8.5; p.zig -= dt; if (p.zig <= 0) { p.zig = 0.4 + rand() * 0.4; p.heading = Math.atan2(dx, dz) + (rand() - 0.5) * 1.8; } if (p.modeT <= 0) { p.mode = 'graze'; p.modeT = 2 + rand() * 3; } }
+      else if (p.mode === 'hop') { p.speed = 1.8; if (p.modeT <= 0) { p.mode = 'graze'; p.modeT = 2 + rand() * 4; } }
+      else { p.speed = 0; if (p.modeT <= 0) { p.mode = 'hop'; p.modeT = 0.8 + rand() * 1.5; p.heading += (rand() - 0.5) * 2.5; } }
+      const nx = p.pos.x + Math.sin(p.heading) * p.speed * dt, nz = p.pos.z + Math.cos(p.heading) * p.speed * dt, nh = terrainH(nx, nz);
+      if (nh > 2 && Math.abs(nh - p.pos.y) < 1.5) { p.vel.set(nx - p.pos.x, nh - p.pos.y, nz - p.pos.z).divideScalar(dt); p.pos.set(nx, nh, nz); } else { p.heading += 2.2; p.vel.set(0, 0, 0); }
+      if (!g.visible) continue;
+      p.hop += dt * p.speed * 2.4;
+      g.position.set(p.pos.x, p.pos.y + (p.speed > 0 ? Math.abs(Math.sin(p.hop)) * (p.mode === 'run' ? 0.45 : 0.2) : 0), p.pos.z);
+      g.rotation.y = p.heading;
+    } else {
+      if (hd < 12 && fp.y < 6 && fs < 16 && p.mode !== 'deep' && p.mode !== 'jump') { p.mode = 'deep'; p.modeT = 3 + rand() * 2; }
+      p.modeT -= dt;
+      let sp = 1.3, y = 0.02 + Math.sin(clock * 2 + p.heading) * 0.05, pitch = 0;
+      if (p.mode === 'swim') { p.heading += (noise(clock * 0.3, p.pos.x * 0.01) * 0.8) * dt; if (p.modeT <= 0) { p.mode = 'jump'; p.modeT = 0.9; } }
+      else if (p.mode === 'jump') { const t = 1 - p.modeT / 0.9; y = Math.sin(Math.PI * clamp(t, 0, 1)) * 1.3; pitch = -Math.cos(Math.PI * clamp(t, 0, 1)) * 0.9; sp = 3; if (p.modeT <= 0) { p.mode = 'swim'; p.modeT = 3 + rand() * 7; if (g.visible) spawnSplash(p.pos, 0.3); } }
+      else { y = -1.6; sp = 3; if (p.modeT <= 0) { p.mode = 'swim'; p.modeT = 2 + rand() * 4; } }
+      const nx = p.pos.x + Math.sin(p.heading) * sp * dt, nz = p.pos.z + Math.cos(p.heading) * sp * dt, nh = terrainH(nx, nz);
+      if (nh < -1.2 && nh > -16) { p.pos.x = nx; p.pos.z = nz; } else p.heading += 2;
+      p.pos.y = damp(p.pos.y, y, p.mode === 'jump' ? 40 : 3, dt);
+      p.vel.set(Math.sin(p.heading) * sp, 0, Math.cos(p.heading) * sp);
+      if (!g.visible) continue;
+      g.position.copy(p.pos); g.rotation.set(pitch, p.heading, 0, 'YXZ');
+    }
+  }
+  // choose the prey you are most likely going for: near, and in front of the camera
+  hunt.pickT -= dt;
+  if (hunt.pickT <= 0) {
+    hunt.pickT = 0.25; let best = null, bestS = Infinity;
+    const cf = _pd.subVectors(camLook, camera.position).normalize();
+    for (const p of prey) {
+      if (!p.alive || (p.type === 'fish' && p.pos.y < -0.6)) continue;
+      const d = p.pos.distanceTo(fp); if (d > 700) continue;
+      const dot = _pv.copy(p.pos).sub(camera.position).normalize().dot(cf);
+      if (dot < 0.35) continue;
+      const s = d * (1.9 - dot) * (p === hunt.target ? 0.7 : 1);
+      if (s < bestS) { bestS = s; best = p; }
+    }
+    hunt.target = best;
+  }
+  if (hunt.carry) {
+    hunt.carryT -= dt;
+    if (hunt.carryT <= 0 && bird.state === 'flying') { hunt.carry.parent?.remove(hunt.carry); hunt.carry = null; }
+  }
+}
+function checkCatch() {
+  if (bird.state !== 'flying') return;
+  const easy = settings.assist === 'easy';
+  for (const p of prey) {
+    if (!p.alive || (p.type === 'fish' && p.pos.y < -0.5)) continue;
+    const R = (p.type === 'bird' ? 1.5 : 2.0) * (easy ? 1.6 : 1);
+    if (bird.pos.distanceToSquared(p.pos) < R * R) { onCatch(p); return; }
+  }
+}
+function onCatch(p) {
+  const kmh = bird.vel.length() * 3.6, info = PREY_INFO[p.type];
+  const pts = Math.round(info.base * (0.6 + kmh / 150));
+  hunt.count++; hunt.score += pts;
+  p.alive = false; p.mesh.g.visible = false; p.respawnT = 25;
+  if (hunt.target === p) hunt.target = null;
+  spawnSplash(p.pos, 0.9, p.type !== 'fish');
+  sfx.catch(); shake = 0.3;
+  bird.stamina = 1;
+  const best = !settings.bestHunt || hunt.score > settings.bestHunt; if (best) { settings.bestHunt = hunt.score; saveSettings(); }
+  toast(`${info.name} · ${Math.round(kmh)} km/h strike · +${pts}`, 2.6);
+  // carry the catch in the talons
+  if (hunt.carry) hunt.carry.parent?.remove(hunt.carry);
+  const c = (p.type === 'bird' ? makePigeon() : p.type === 'rabbit' ? makeRabbit() : makeFish()).g;
+  c.scale.multiplyScalar(1 / birdMesh.group.scale.x * 0.45);
+  c.position.set(0, -0.34, 0.05);
+  if (p.type === 'bird') c.rotation.z = Math.PI;
+  if (p.type === 'rabbit') { c.position.y = -0.3; c.rotation.y = Math.PI / 2; }
+  birdMesh.body.add(c); hunt.carry = c; hunt.carryT = 5;
+  if (p.type === 'rabbit') {
+    landAt(terrainH(bird.pos.x, bird.pos.z), false, false);
+    toast(`Rabbit · ${Math.round(kmh)} km/h strike · +${pts}`, 2.6);
+  } else if (p.type === 'fish') { bird.vel.y = Math.max(bird.vel.y, 3); }
+  if (p.type === 'bird') p.flock.alarm = 8;
+}
+
 // ---------------------------------------------------------------- minimap
 const mm = document.getElementById('minimap'), mctx = mm.getContext('2d');
 let mmBase;
@@ -1030,6 +1287,7 @@ function drawMinimap() {
   for (const t of thermals) { mctx.beginPath(); mctx.arc(X(t.x), X(t.z), 5, 0, 7); mctx.stroke(); }
   rings.forEach((r, i) => { if (i < ringIdx) return; mctx.fillStyle = i === ringIdx ? '#ffcf5a' : 'rgba(255,207,90,.45)'; mctx.beginPath(); mctx.arc(X(r.position.x), X(r.position.z), i === ringIdx ? 6 : 3.5, 0, 7); mctx.fill(); });
   mctx.fillStyle = '#e8eef4'; mctx.fillRect(X(village.x) - 4, X(village.z) - 4, 8, 8);
+  if (hunt.target) { mctx.fillStyle = '#ff7a66'; mctx.beginPath(); mctx.arc(X(hunt.target.pos.x), X(hunt.target.pos.z), 5, 0, 7); mctx.fill(); }
   const yaw = yawOf(bird.q), bx = X(bird.pos.x), bz = X(bird.pos.z);
   mctx.save(); mctx.translate(bx, bz); mctx.rotate(-yaw + Math.PI);
   mctx.fillStyle = '#ffffff'; mctx.strokeStyle = '#13202e'; mctx.lineWidth = 2;
@@ -1039,7 +1297,7 @@ function drawMinimap() {
 
 // ---------------------------------------------------------------- settings (remembered per browser)
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
-const DEFAULTS = { control: 'mouse', assist: 'easy', tod: 'noon', quality: 'auto', invert: false, sound: true, tutorialDone: false, best: 0 };
+const DEFAULTS = { control: 'mouse', assist: 'easy', tod: 'noon', quality: 'auto', invert: false, sound: true, tutorialDone: false, best: 0, bestHunt: 0 };
 let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('updraft.v2') || '{}')); } catch (e) { /* storage blocked: defaults */ }
 function saveSettings() { try { localStorage.setItem('updraft.v2', JSON.stringify(settings)); } catch (e) { /* ignore */ } }
@@ -1071,11 +1329,12 @@ const sfx = (() => {
   }
   return {
     init, refresh() { if (master) master.gain.value = vol(); },
-    wind(v) { if (!ctx) return; const t = ctx.currentTime; windGain.gain.setTargetAtTime(clamp((v / 38) ** 2 * 0.9, 0.02, 0.9), t, 0.15); windFilter.frequency.setTargetAtTime(180 + v * 28, t, 0.2); },
+    wind(v) { if (!ctx) return; const t = ctx.currentTime; windGain.gain.setTargetAtTime(clamp((v / 60) ** 2 * 0.9, 0.02, 0.95), t, 0.15); windFilter.frequency.setTargetAtTime(160 + v * 20, t, 0.2); },
     flap() { burst(0.16, 520, 'lowpass', 0.35); },
     splash(a) { burst(0.5 + a * 0.4, 1600, 'highpass', 0.3 + a * 0.3); },
     thump() { burst(0.35, 160, 'lowpass', 0.9); },
     beep(v) { tone(640 + v * 120, 0.07, 0.07); },
+    catch() { burst(0.25, 300, 'lowpass', 0.7); tone(523, 0.18, 0.14, 0.05); tone(784, 0.3, 0.14, 0.16); },
     step() { tone(880, 0.12, 0.12); tone(1320, 0.2, 0.1, 0.09); },
     chime(i) { [0, 4, 7].forEach((st, j) => tone(660 * Math.pow(2, (st + (i % 5)) / 12), 0.7, 0.18, j * 0.07)); }
   };
@@ -1084,7 +1343,7 @@ const sfx = (() => {
 // ---------------------------------------------------------------- state flags
 let clock = 0, started = false, paused = false, waterMat, startClock = 0;
 const playing = () => started && !paused;
-let shake = 0, camSnap = true, camDist = isTouch ? 5.2 : 4.8;
+let shake = 0, camSnap = true, camDist = isTouch ? 4.4 : 4.0;
 
 // ---------------------------------------------------------------- input: keyboard, mouse aim, touch, gamepad
 const keys = new Set();
@@ -1159,6 +1418,21 @@ for (const [id, keyName] of [['tflap', 'flap'], ['tdive', 'dive']]) {
 $('pausebtn').addEventListener('click', () => pause());
 
 const travel = { yaw: 0, pitch: 0, dir: new THREE.Vector3(0, 0, 1) };
+const _sa = new THREE.Vector3(), strikeAim = new THREE.Vector3();
+// easy mode strike assist: once committed to a target, the falcon leads it like a real one does
+function strikeAssist(p, r) {
+  input.strike = false;
+  const T = hunt.target;
+  if (settings.assist !== 'easy' || !T || bird.state !== 'flying') return { p, r };
+  const to = _sa.copy(T.pos).sub(bird.pos), d = to.length(), sp = Math.max(bird.vel.length(), 12);
+  if (d > 70) return { p, r };
+  to.addScaledVector(T.vel, d / sp).normalize();
+  if (to.dot(travel.dir) < 0.72) return { p, r };
+  const he = wrapPi(Math.atan2(to.x, to.z) - travel.yaw);
+  input.strike = true; strikeAim.copy(to);
+  // physics does the homing; stick inputs only add a matching bank so it looks right
+  return { r: lerp(r, clamp(-he * 2, -1, 1), 0.6), p: p * 0.2 };
+}
 function updateTravel() {
   const v = bird.vel, l = v.length();
   if (bird.state === 'flying' && l > 3) { travel.dir.copy(v).divideScalar(l); travel.yaw = Math.atan2(v.x, v.z); travel.pitch = Math.asin(clamp(v.y / l, -1, 1)); }
@@ -1195,9 +1469,11 @@ function readInput(dt) {
   usingAim = mouseMode() && aim.engaged && !manual && bird.state !== 'crashed';
   if (usingAim) { const a = autopilot(); r = a.r; p = bird.state === 'flying' ? a.p : 0; }
   else { aim.yaw = travel.yaw; aim.pitch = travel.pitch; }
+  // easy mode strike assist: once you are committed to a target, the falcon leads it like a real one does
+  ({ p, r } = strikeAssist(p, r));
   // easy mode: asking to climb when slow makes the bird flap for you
   input.autoFlap = false;
-  if (settings.assist === 'easy' && bird.state === 'flying' && p > 0.35 && bird.airspeed < 12.5 && bird.stamina > 0.08 && !dive) { flap = true; input.autoFlap = true; }
+  if (settings.assist === 'easy' && bird.state === 'flying' && p > 0.35 && bird.airspeed < 15 && bird.stamina > 0.08 && !dive) { flap = true; input.autoFlap = true; }
   input.pitch = ramp(input.pitch, clamp(p, -1, 1), dt);
   input.roll = ramp(input.roll, clamp(r, -1, 1), dt);
   input.flap = flap; input.dive = dive;
@@ -1233,7 +1509,7 @@ function updateCamera(dt) {
   camera.up.set(0, 1, 0).applyAxisAngle(camFwd, -bank * 0.22);
   camera.lookAt(camLook);
   const sp = bird.state === 'flying' ? bird.airspeed : 0;
-  camera.fov = damp(camera.fov, 62 + clamp((sp - 12) / 30, 0, 1) * 22, 3, dt);
+  camera.fov = damp(camera.fov, 60 + clamp((sp - 16) / 60, 0, 1) * 30, 3, dt);
   camera.updateProjectionMatrix();
 }
 
@@ -1243,7 +1519,7 @@ const slGeo = new THREE.BufferGeometry(); slGeo.setAttribute('position', new THR
 const speedLines = new THREE.LineSegments(slGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
 speedLines.frustumCulled = false; camera.add(speedLines);
 function updateSpeedLines(dt) {
-  const sp = bird.state === 'flying' ? bird.airspeed : 0, k = smooth(17, 34, sp);
+  const sp = bird.state === 'flying' ? bird.airspeed : 0, k = smooth(24, 60, sp);
   speedLines.material.opacity = k * 0.32; speedLines.visible = k > 0.01;
   if (!speedLines.visible) return;
   const len = 0.4 + sp * 0.05;
@@ -1271,7 +1547,7 @@ function updateBlob() {
 
 // ---------------------------------------------------------------- markers, warnings, tutorial
 const $m = id => { const el = $(id); return { el, tri: el.querySelector('.tri'), dot: el.querySelector('.dot'), lbl: el.querySelector('.lbl') }; };
-const ringMark = $m('ringmark'), liftMark = $m('liftmark');
+const ringMark = $m('ringmark'), liftMark = $m('liftmark'), preyMark = $m('preymark');
 const _p = new THREE.Vector3();
 function placeMarker(m, world, label) {
   if (!world) { m.el.style.display = 'none'; return; }
@@ -1315,10 +1591,10 @@ function groundAhead() {
 const kind = () => isTouch ? 'touch' : mouseMode() ? 'mouse' : 'keys';
 const TUT = [
   { t: 'Climb', h: { mouse: 'Hold the left mouse button or Space to flap.', keys: 'Hold Space to flap.', touch: 'Hold FLAP.' }, start: s => { s.y0 = bird.pos.y; }, check: s => bird.pos.y - s.y0 > 15 },
-  { t: 'Turn', h: { mouse: 'Move the mouse sideways. The bird flies toward the white circle.', keys: 'Press A or D. Let go and the bird levels out.', touch: 'Push the stick left or right.' }, start: s => { s.turn = 0; s.yaw = yawOf(bird.q); }, check: s => { const y = yawOf(bird.q); s.turn += Math.abs(wrapPi(y - s.yaw)); s.yaw = y; return s.turn > 2.4; } },
-  { t: 'Dive', h: { mouse: 'Point down and hold the right mouse button or Shift to tuck your wings. Reach 70 km/h.', keys: 'Hold S and Shift to tuck your wings. Reach 70 km/h.', touch: 'Pull the stick down and hold TUCK. Reach 70 km/h.' }, check: () => bird.airspeed * 3.6 > 70 },
-  { t: 'Ride rising air', h: { all: 'Fly to the green marker, then keep turning in a circle there. Climb 20 m without flapping.' }, start: s => { s.y0 = null; }, check: s => { if (!lift.inside || bird.flapAmp > 0.3) { s.y0 = null; return false; } if (s.y0 === null) s.y0 = bird.pos.y; return bird.pos.y - s.y0 > 20; } },
-  { t: 'Fly through a ring', h: { all: 'Follow the gold marker and fly through the ring.' }, start: s => { s.r0 = ringIdx; }, check: s => ringIdx > s.r0 || courseDone },
+  { t: 'Turn', h: { mouse: 'Move the mouse sideways. The falcon flies toward the white circle.', keys: 'Press A or D. Let go and the falcon levels out.', touch: 'Push the stick left or right.' }, start: s => { s.turn = 0; s.yaw = yawOf(bird.q); }, check: s => { const y = yawOf(bird.q); s.turn += Math.abs(wrapPi(y - s.yaw)); s.yaw = y; return s.turn > 2.4; } },
+  { t: 'Gain height', h: { all: 'Fly to the green marker and circle inside the rising air. Climb 25 m without flapping.' }, start: s => { s.y0 = null; }, check: s => { if (!lift.inside || bird.flapAmp > 0.3) { s.y0 = null; return false; } if (s.y0 === null) s.y0 = bird.pos.y; return bird.pos.y - s.y0 > 25; } },
+  { t: 'Stoop', h: { mouse: 'Point steeply down and hold right-click or Shift to fold your wings. Reach 160 km/h.', keys: 'Hold S and Shift to fold your wings and dive. Reach 160 km/h.', touch: 'Pull the stick down and hold TUCK. Reach 160 km/h.' }, check: () => bird.airspeed * 3.6 > 160 },
+  { t: 'Hunt', h: { all: 'The red diamond marks prey. Get above it, stoop, and fly right through it. Faster strikes score more.' }, start: s => { s.c0 = hunt.count; }, check: s => hunt.count > s.c0 },
   { t: 'Land', h: { all: 'Glide low and slow, then touch down gently. Flap to take off again.' }, check: () => bird.state === 'landed' },
 ];
 const tut = { active: false, i: 0, s: {}, doneT: 0 };
@@ -1350,7 +1626,7 @@ function updateHud(dt) {
   hud.fill.style.transform = `scaleX(${bird.stamina.toFixed(3)})`;
   const flying = bird.state === 'flying' && playing();
   hud.warn.style.opacity = flying && bird.aoa > 0.3 && bird.airspeed > 2 ? 1 : 0;
-  hud.pull.style.opacity = flying && groundAhead() ? 1 : 0;
+  hud.pull.style.opacity = flying && !input.strike && groundAhead() ? 1 : 0;
   // aim circle and where the bird is actually heading
   const showAim = flying && usingAim;
   hud.reticle.style.display = hud.heading.style.display = showAim ? 'block' : 'none';
@@ -1361,6 +1637,9 @@ function updateHud(dt) {
   }
   const r = rings[ringIdx];
   placeMarker(ringMark, started && r && !courseDone ? r.position : null, r ? `${Math.round(r.position.distanceTo(bird.pos))} m` : '');
+  const T = hunt.target;
+  placeMarker(preyMark, started && T && bird.state === 'flying' ? T.pos : null, T ? `${PREY_INFO[T.type].name.toLowerCase()} ${Math.round(T.pos.distanceTo(bird.pos))} m` : '');
+  if (bird.state === 'flying') hunt.top = Math.max(hunt.top, bird.airspeed);
   const showLift = started && lift.t && !lift.inside && bird.state === 'flying' && (lift.dist < 900 || (tut.active && tut.i === 3));
   placeMarker(liftMark, showLift ? lift.pos : null, `lift ${Math.round(lift.dist)} m`);
   hud.chip.style.opacity = flying && lift.inside ? 1 : 0;
@@ -1376,7 +1655,8 @@ function updateHud(dt) {
   const v = bird.state === 'flying' ? bird.vario : 0;
   hud.vario.textContent = `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)} m/s`;
   hud.vario.className = 'v ' + (v > 0.4 ? 'up' : v < -2.5 ? 'down' : '');
-  hud.dist.textContent = courseDone ? 'course flown' : settings.best ? `best ${Math.floor(settings.best / 60)}:${String(Math.floor(settings.best % 60)).padStart(2, '0')}` : 'fly them in order';
+  hud.dist.textContent = courseDone ? '✓' : '';
+  $('huntcount').textContent = hunt.count; $('huntscore').textContent = hunt.score.toLocaleString(); $('topspd').textContent = Math.round(hunt.top * 3.6);
   drawMinimap();
 }
 
@@ -1393,7 +1673,7 @@ function updateBirdVisual(dt) {
     const a = bird.flapAmp;
     flap = Math.sin(bird.flapPhase) * 0.85 * a;
     elbow = Math.sin(bird.flapPhase - 0.9) * 0.5 * a;
-    sweep = (1 - bird.ext) * 1.05 + (1 - a) * clamp((bird.airspeed - 16) / 25, 0, 0.35);
+    sweep = (1 - bird.ext) * 1.3 + (1 - a) * clamp((bird.airspeed - 18) / 30, 0, 0.35);
     flap += Math.sin(clock * 9) * 0.015 * (1 - a) + clamp(bird.aoa, -0.2, 0.4) * 0.25 * (1 - a);
   }
   birdFold = damp(birdFold, fold, 6, dt);
@@ -1440,7 +1720,7 @@ function monitorQuality(rawDt) {
 }
 
 // ---------------------------------------------------------------- settings menu
-const assistText = { easy: 'Easy: the bird will not stall, flaps for you when you ask to climb while slow, flares before touchdown, and forgives harder landings.', real: 'Realistic: you manage speed, stalls and landings yourself.' };
+const assistText = { easy: 'Easy: no stalls, auto-flap when you ask to climb while slow, the falcon leads its target in the last 70 m of a strike, bigger catch radius, flare before touchdown, gentler landings.', real: 'Realistic: you manage speed, stalls and landings yourself.' };
 function syncMenu() {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(String(settings[seg.dataset.key]) === b.dataset.v))));
   $('assisthint').textContent = assistText[settings.assist];
@@ -1482,6 +1762,7 @@ function frame(now) {
   } else updateTravel();
   updateBirdVisual(dt);
   updateFlock(dt);
+  if (started) updatePrey(playing() ? dt : 0);
   updateMotes(dt);
   updateParts(dt);
   if (!started) { orbitYaw += dt * 0.12; lastDrag = clock; }
@@ -1503,8 +1784,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 // ---------------------------------------------------------------- boot
 const loading = $('loading');
 $('howto').innerHTML = isTouch
-  ? '<div><b>Steer</b>Left stick. Let go to fly straight.</div><div><b>Climb</b>Hold FLAP.</div><div><b>Dive</b>Stick down, hold TUCK.</div><div><b>Rest</b>Glide, and circle where the green marker shows rising air.</div>'
-  : '<div><b>Steer</b>Move the mouse. The bird flies to the circle. Or use <kbd>WASD</kbd>.</div><div><b>Flap</b>Hold <kbd>click</kbd> or <kbd>Space</kbd>.</div><div><b>Dive</b>Hold <kbd>right-click</kbd> or <kbd>Shift</kbd>.</div><div><b>Rest</b>Glide, and circle where the green marker shows rising air.</div>';
+  ? '<div><b>Steer</b>Left stick. Let go to fly straight.</div><div><b>Climb</b>Hold FLAP, or circle in rising air (green).</div><div><b>Stoop</b>Stick down, hold TUCK.</div><div><b>Hunt</b>Dive through the red diamond to catch it.</div>'
+  : '<div><b>Steer</b>Move the mouse. The falcon flies to the circle. Or <kbd>WASD</kbd>.</div><div><b>Climb</b>Hold <kbd>click</kbd> / <kbd>Space</kbd>, or circle in rising air.</div><div><b>Stoop</b>Hold <kbd>right-click</kbd> / <kbd>Shift</kbd> and point down.</div><div><b>Hunt</b>Dive through the red diamond to catch it.</div>';
 if (isTouch) $('starthint').textContent = settings.tutorialDone ? 'Tap II to pause and change settings.' : 'A short tutorial guides your first flight. Tap II to pause and change settings.';
 else if (settings.tutorialDone) $('starthint').textContent = 'Esc pauses and opens settings. Replay the tutorial from there.';
 const steps = [
@@ -1515,6 +1796,7 @@ const steps = [
   ['building the village', buildVillage],
   ['raising thermals', () => { buildThermals(); buildMotes(); }],
   ['placing rings', () => { buildRings(); buildFlock(); buildMinimap(); }],
+  ['releasing prey', buildPrey],
   ['setting the sun', () => { applyTimeOfDay(settings.tod); applyQuality(); syncMenu(); }],
 ];
 let si = 0;
@@ -1524,17 +1806,18 @@ function boot() {
   resetToStart();
   const go = $('go'); go.disabled = false; go.textContent = settings.tutorialDone ? 'Fly' : 'Start flying'; go.focus();
   window.__updraft = {
-    bird, input, aim, settings, terrainH, windAt, thermals, rings, village, lift, tut, get ringIdx() { return ringIdx; },
+    bird, input, aim, settings, hunt, prey, terrainH, windAt, thermals, rings, village, lift, tut, get ringIdx() { return ringIdx; },
     sim(sec, inp) {
       const useAim = inp.aim; Object.assign(input, { pitch: 0, roll: 0, flap: false, dive: false }, inp);
       for (let t = 0; t < sec; t += FIXED) {
-        if (useAim) { updateTravel(); const a = autopilot(); input.roll = a.r; input.pitch = a.p; input.flap = !!inp.flap || (settings.assist === 'easy' && a.p > 0.35 && bird.airspeed < 12.5 && bird.stamina > 0.08); }
+        if (inp.hunt) { updatePrey(FIXED); updateTravel(); const a = strikeAssist(inp.pitch || 0, inp.roll || 0); input.pitch = a.p; input.roll = a.r; }
+        if (useAim) { updateTravel(); const a = autopilot(); input.roll = a.r; input.pitch = a.p; input.flap = !!inp.flap || (settings.assist === 'easy' && a.p > 0.35 && bird.airspeed < 15 && bird.stamina > 0.08); }
         physicsStep(FIXED);
       }
       updateTravel();
       return { state: bird.state, y: +bird.pos.y.toFixed(1), agl: +(bird.pos.y - Math.max(0, terrainH(bird.pos.x, bird.pos.z))).toFixed(1), v: +bird.airspeed.toFixed(1), vy: +bird.vel.y.toFixed(2), aoa: +bird.aoa.toFixed(3), bank: +(bankAngle() * 57.3).toFixed(0), pitch: +(Math.asin(fwd.y) * 57.3).toFixed(0), yaw: +(yawOf(bird.q) * 57.3).toFixed(0), tyaw: +(travel.yaw * 57.3).toFixed(0), stam: +bird.stamina.toFixed(2) };
     },
-    reset: resetToStart, freeze(v) { paused = v; }, setSetting
+    reset: resetToStart, freeze(v) { paused = v; }, snap() { camSnap = true; }, setSetting
   };
   requestAnimationFrame(frame);
 }
