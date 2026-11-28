@@ -31,6 +31,7 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 #minimap { display: block; width: 150px; height: 150px; border-radius: 6px; }
 #rings { top: calc(176px + env(safe-area-inset-top, 0px)); line-height: 1.5; right: calc(12px + env(safe-area-inset-right, 0px)); padding: 7px 12px; font-family: var(--f-data); font-size: 13px; text-align: right; }
 #rings b { color: var(--gold); font-weight: 500; }
+#rush { inset: 0; opacity: 0; background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 52%, rgba(12,22,34,.5) 88%, rgba(12,22,34,.75) 100%); }
 #toast { top: 26%; left: 50%; transform: translateX(-50%); font-family: var(--f-display); font-style: italic; font-size: clamp(26px, 5vw, 44px); text-shadow: 0 2px 18px rgba(0,0,0,.35); opacity: 0; transition: opacity .35s; text-align: center; width: max-content; max-width: calc(100vw - 32px); line-height: 1.15; }
 #warn { top: 36%; left: 50%; transform: translateX(-50%); font-family: var(--f-data); font-size: 14px; letter-spacing: .2em; color: var(--sink); opacity: 0; transition: opacity .2s; }
 #keys { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: calc(12px + env(safe-area-inset-left, 0px)); padding: 8px 12px; font-size: 12px; line-height: 1.6; color: var(--ink-dim); }
@@ -100,6 +101,7 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 </div>
 <div id="mapwrap" class="hud panel"><canvas id="minimap" width="300" height="300"></canvas></div>
 <div id="rings" class="hud panel">Catches <b class="hl" id="huntcount">0</b> · <span id="huntscore">0</span> pts<br>top <span id="topspd">0</span> km/h<br>Rings <b id="ringcount">0/12</b> <span id="ringdist"></span></div>
+<div id="rush" class="hud"></div>
 <div id="toast" class="hud"></div>
 <div id="warn" class="hud">STALL</div>
 <div id="ringmark" class="marker"><div class="tri"></div><div class="dot"></div><div class="lbl"></div></div>
@@ -706,7 +708,7 @@ function poseWings(b, flap, elbowFlap, sweep, fold) {
 
 // ---------------------------------------------------------------- player bird physics
 // peregrine falcon: ~0.9 kg, ~1.1 m span, cruises ~55 km/h, stoops past 300 km/h with wings tucked
-const P = { m: 0.9, g: 9.81, rho: 1.225, S: 0.12, cl0: 0.35, cla: 4.6, cd0: 0.02, k: 0.065, bodyCdA: 0.0012, flapForce: 13, gMax: 10 };
+const P = { m: 0.9, g: 9.81, rho: 1.225, S: 0.12, cl0: 0.35, cla: 4.6, cd0: 0.02, k: 0.065, bodyCdA: 0.0009, flapForce: 17, gMax: 10, aoaTrim: -0.015 };
 const bird = {
   pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(),
   state: 'flying', stamina: 1, flapPhase: 0, flapAmp: 0, ext: 1, aoa: 0, airspeed: 0, crashT: 0, landY: 0, onWater: false,
@@ -767,7 +769,7 @@ function physicsStep(dt) {
   const V = va.length();
   bird.airspeed = V;
   bird.ext = damp(bird.ext, input.dive ? 0.04 : 1, input.dive ? 5 : 3.5, dt);
-  const Seff = P.S * (0.17 + 0.83 * bird.ext);
+  const Seff = P.S * (0.14 + 0.86 * bird.ext);
   F.set(0, -P.m * P.g, 0);
   let aoa = 0;
   if (V > 0.3) {
@@ -782,7 +784,8 @@ function physicsStep(dt) {
     const q = 0.5 * P.rho * V * V;
     const vdir = tmp.copy(va).divideScalar(V);
     const liftDir = tmp2.crossVectors(right, vdir).normalize();
-    F.addScaledVector(liftDir, clamp(q * Seff * Cl, -4 * P.m * P.g, P.gMax * P.m * P.g)); // a falcon pulls hard out of a stoop, but not infinitely
+    const Lmag = clamp(q * Seff * Cl, -4 * P.m * P.g, P.gMax * P.m * P.g); bird.gload = Math.abs(Lmag) / (P.m * P.g);
+    F.addScaledVector(liftDir, Lmag); // a falcon pulls hard out of a stoop, but not infinitely
     F.addScaledVector(vdir, -q * (Seff * Cd + P.bodyCdA));
     F.addScaledVector(right, -q * 0.03 * Math.sin(beta));
 
@@ -795,10 +798,10 @@ function physicsStep(dt) {
     // instinctive speed hold + flight-path damping (suppresses the phugoid), fades out as the player pitches
     const gamma = Math.asin(clamp(va.y / V, -1, 1));
     const gdot = clamp((gamma - bird.lastGamma) / dt, -3, 3); bird.lastGamma = gamma;
-    const vTrim = 15.5;
+    const vTrim = input.flap ? 40 : 22; // glides near 80 km/h; flapping drives toward ~130 km/h instead of just climbing
     const assist = (1 - Math.abs(pIn)) * (input.dive ? 0 : 1);
-    const hold = assist * (clamp((V - vTrim) * 0.02, -0.06, 0.12) - clamp(gdot * 0.13, -0.12, 0.12) + clamp((-0.07 - gamma) * 0.3, -0.08, 0.08));
-    const aoaCmd = 0.03 + (P.cl0 + P.cla * 0.03) * (nTurn - 1) * 1.1 / P.cla + hold + (pIn > 0 ? pIn * 0.3 : pIn * 0.14);
+    const hold = assist * (clamp((V - vTrim) * 0.02, -0.06, 0.12) - clamp(gdot * 0.13, -0.12, 0.12) + clamp((-0.06 - gamma) * 0.3, -0.08, 0.08));
+    const aoaCmd = P.aoaTrim + (P.cl0 + P.cla * 0.08) * (nTurn - 1) * 1.1 / P.cla + hold + (pIn > 0 ? pIn * 0.3 : pIn * 0.14);
     let cmd = aoaCmd;
     if (settings.assist === 'easy') {
       const agl = bird.pos.y - Math.max(gh, 0);
@@ -919,14 +922,14 @@ function crash(msg) {
 function respawn() {
   bird.state = 'flying';
   bird.pos.copy(bird.safe.pos); bird.q.copy(headingQuat(yawOf(bird.safe.q), 0));
-  axes(); bird.vel.copy(fwd).multiplyScalar(16); bird.stamina = Math.max(bird.stamina, 0.6); camSnap = true;
+  axes(); bird.vel.copy(fwd).multiplyScalar(22); bird.stamina = Math.max(bird.stamina, 0.6); camSnap = true;
 }
 function resetToStart() {
   const yaw = Math.atan2(PEAK.x - village.x, PEAK.y - village.z);
   bird.pos.set(village.x - Math.sin(yaw) * 220, 0, village.z - Math.cos(yaw) * 220);
   bird.pos.y = Math.max(terrainH(bird.pos.x, bird.pos.z), 0) + 70;
   bird.q.copy(headingQuat(yaw, 0)); axes();
-  bird.vel.copy(fwd).multiplyScalar(16);
+  bird.vel.copy(fwd).multiplyScalar(22);
   bird.state = 'flying'; bird.stamina = 1;
   bird.safe.pos.copy(bird.pos); bird.safe.q.copy(bird.q); camSnap = true;
 }
@@ -1325,7 +1328,7 @@ const sfx = (() => {
   }
   return {
     init, refresh() { if (master) master.gain.value = vol(); },
-    wind(v) { if (!ctx) return; const t = ctx.currentTime; windGain.gain.setTargetAtTime(clamp((v / 60) ** 2 * 0.9, 0.02, 0.95), t, 0.15); windFilter.frequency.setTargetAtTime(160 + v * 20, t, 0.2); },
+    wind(v) { if (!ctx) return; const t = ctx.currentTime; windGain.gain.setTargetAtTime(clamp((v / 45) ** 2 * 0.9, 0.03, 1.1), t, 0.12); windFilter.frequency.setTargetAtTime(180 + v * 26, t, 0.15); },
     flap() { burst(0.16, 520, 'lowpass', 0.35); },
     splash(a) { burst(0.5 + a * 0.4, 1600, 'highpass', 0.3 + a * 0.3); },
     thump() { burst(0.35, 160, 'lowpass', 0.9); },
@@ -1474,6 +1477,7 @@ function readInput(dt) {
 
 // ---------------------------------------------------------------- camera, speed lines, ground shadow
 scene.add(camera);
+let camAccel = 0; const rush = $('rush'), camRel = new THREE.Vector3(0, 2, -5);
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), camFwd = new THREE.Vector3(0, 0, 1);
 function aimDir(out) { return out.set(Math.cos(aim.pitch) * Math.sin(aim.yaw), Math.sin(aim.pitch), Math.cos(aim.pitch) * Math.cos(aim.yaw)); }
 const _aim = new THREE.Vector3();
@@ -1490,34 +1494,45 @@ function updateCamera(dt) {
   const dir = camFwd.clone().applyAxisAngle(AY, orbitYaw);
   const side = new THREE.Vector3().crossVectors(dir, AY).normalize();
   dir.applyAxisAngle(side, -orbitPitch);
-  const want = bird.pos.clone().addScaledVector(dir, -camDist).add(new THREE.Vector3(0, 1.1 + camDist * 0.1, 0));
+  // speed feel: the camera tucks in closer and lower, and lags a touch behind as you accelerate
+  const spk = bird.state === 'flying' ? smooth(15, 85, bird.airspeed) : 0;
+  const accel = bird.state === 'flying' ? clamp((bird.airspeed - (updateCamera.lastSp ?? bird.airspeed)) / Math.max(dt, 1e-3), -20, 20) : 0;
+  updateCamera.lastSp = bird.airspeed; camAccel = damp(camAccel, accel, 4, dt);
+  const effDist = camDist * (1 - 0.4 * spk) + clamp(camAccel, 0, 15) * 0.05;
+  const want = bird.pos.clone().addScaledVector(dir, -effDist).add(new THREE.Vector3(0, (1.1 + camDist * 0.1) * (1 - 0.45 * spk), 0));
   const gh = Math.max(terrainH(want.x, want.z), SEA) + 1.2;
   if (want.y < gh) want.y = gh;
-  if (camSnap) { camPos.copy(want); camSnap = false; } else camPos.lerp(want, 1 - Math.exp(-(bird.state === 'flying' ? 9 : 4) * dt));
+  // smooth the camera's offset from the bird, not its world position, so it never falls behind at speed
+  const wantRel = want.sub(bird.pos);
+  if (camSnap) { camRel.copy(wantRel); camSnap = false; } else camRel.lerp(wantRel, 1 - Math.exp(-(bird.state === 'flying' ? 7 : 4) * dt));
+  camPos.copy(bird.pos).add(camRel);
   if (camPos.y < gh) camPos.y = gh;
   camLook.copy(bird.pos).addScaledVector(camFwd, 2.5).add(new THREE.Vector3(0, 0.35, 0));
   camera.position.copy(camPos);
+  // high-speed buffeting
+  if (spk > 0.05) { const b = spk * spk * 0.045; camera.position.x += (Math.random() - 0.5) * b; camera.position.y += (Math.random() - 0.5) * b; camera.position.z += (Math.random() - 0.5) * b; }
   if (shake > 0) { camera.position.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(shake * 0.4)); shake = Math.max(0, shake - dt * 1.6); }
   const bank = bird.state === 'flying' ? bankAngle() : 0;
   camera.up.set(0, 1, 0).applyAxisAngle(camFwd, -bank * 0.22);
   camera.lookAt(camLook);
   const sp = bird.state === 'flying' ? bird.airspeed : 0;
-  camera.fov = damp(camera.fov, 60 + clamp((sp - 16) / 60, 0, 1) * 30, 3, dt);
+  camera.fov = damp(camera.fov, 58 + smooth(12, 85, sp) * 32 + (input.dive && bird.state === 'flying' ? 4 : 0), 4, dt);
+  rush.style.opacity = (smooth(25, 80, sp) * 0.9).toFixed(3);
   camera.updateProjectionMatrix();
 }
 
-const SL = 90, slPos = new Float32Array(SL * 6), slSeed = [];
-for (let i = 0; i < SL; i++) { const a = Math.random() * 6.28, r = 1.4 + Math.random() * 4; slSeed.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7, z: -2 - Math.random() * 30 }); }
+const SL = 170, slPos = new Float32Array(SL * 6), slSeed = [];
+for (let i = 0; i < SL; i++) { const a = Math.random() * 6.28, r = 0.9 + Math.random() * 4.2; slSeed.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.7, z: -2 - Math.random() * 30 }); }
 const slGeo = new THREE.BufferGeometry(); slGeo.setAttribute('position', new THREE.BufferAttribute(slPos, 3));
 const speedLines = new THREE.LineSegments(slGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
 speedLines.frustumCulled = false; camera.add(speedLines);
 function updateSpeedLines(dt) {
-  const sp = bird.state === 'flying' ? bird.airspeed : 0, k = smooth(24, 60, sp);
-  speedLines.material.opacity = k * 0.32; speedLines.visible = k > 0.01;
+  const sp = bird.state === 'flying' ? bird.airspeed : 0, k = smooth(14, 50, sp);
+  speedLines.material.opacity = k * 0.5; speedLines.visible = k > 0.01;
   if (!speedLines.visible) return;
-  const len = 0.4 + sp * 0.05;
+  const len = 0.5 + sp * 0.09;
   slSeed.forEach((s, i) => {
-    s.z += sp * dt * 1.2; if (s.z > -1) s.z -= 30;
+    s.z += sp * dt * 1.6; if (s.z > -1) s.z -= 30;
     slPos.set([s.x, s.y, s.z, s.x, s.y, s.z - len], i * 6);
   });
   slGeo.attributes.position.needsUpdate = true;
@@ -1526,6 +1541,29 @@ function updateSpeedLines(dt) {
 const blobTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
 const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.8), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
 scene.add(blob);
+// wingtip vapour trails: show up in fast flight and hard pull-outs
+const TRAIL_N = 46, trails = [];
+for (let w = 0; w < 2; w++) {
+  const geo = new THREE.BufferGeometry(), pos = new Float32Array(TRAIL_N * 3), col = new Float32Array(TRAIL_N * 4);
+  for (let i = 0; i < TRAIL_N; i++) { col.set([1, 1, 1, Math.pow(1 - i / (TRAIL_N - 1), 1.6)], i * 4); }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false }));
+  line.frustumCulled = false; scene.add(line); trails.push({ line, pos, fresh: true });
+}
+const _tip = new THREE.Vector3();
+function updateTrails() {
+  const k = bird.state === 'flying' ? Math.max(smooth(30, 70, bird.airspeed), smooth(2.5, 7, bird.gload || 0) * smooth(15, 30, bird.airspeed)) : 0;
+  birdMesh.group.updateMatrixWorld(true);
+  trails.forEach((t, w) => {
+    t.line.material.opacity = k * 0.55;
+    const wing = birdMesh.wings[w];
+    wing.elbow.localToWorld(_tip.set(wing.s * 0.5, 0, -0.08));
+    if (k < 0.01 || t.fresh) { for (let i = 0; i < TRAIL_N; i++) t.pos.set([_tip.x, _tip.y, _tip.z], i * 3); t.fresh = k < 0.01; }
+    else { t.pos.copyWithin(3, 0, (TRAIL_N - 1) * 3); t.pos.set([_tip.x, _tip.y, _tip.z], 0); }
+    t.line.geometry.attributes.position.needsUpdate = true;
+  });
+}
+
 function updateBlob() {
   const th = terrainH(bird.pos.x, bird.pos.z), water = th < SEA, gy = water ? SEA : th;
   const agl = bird.pos.y - gy;
@@ -1760,6 +1798,7 @@ function frame(now) {
   if (!started) { orbitYaw += dt * 0.12; lastDrag = clock; }
   updateCamera(dt);
   updateSpeedLines(dt);
+  updateTrails();
   updateBlob();
   updateLift();
   updateTutorial(dt);

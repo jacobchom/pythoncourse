@@ -2,7 +2,7 @@
 
 A 3D peregrine falcon flight-and-hunting game in a single HTML file (Three.js, no build step).
 
-Climb on rising air, pick out prey (red diamond), fold your wings and stoop at 250-300 km/h.
+Climb on rising air, pick out prey (red diamond), fold your wings and stoop at over 300 km/h.
 Pigeon flocks scatter and jink, rabbits bolt and zigzag, fish surface and jump near the coast.
 Fly through prey to catch it; faster strikes score more.
 
@@ -22,7 +22,7 @@ Open `index.html` in a browser (it loads Three.js from a CDN, so it needs intern
 - Graphics lower themselves automatically if the frame rate drops.
 
 ## Physics
-Peregrine-like numbers: 0.9 kg, about 1.1 m span, cruises around 55 km/h, tucked stoop terminal speed near 300 km/h,
+Peregrine-like numbers: 0.9 kg, about 1.1 m span, glides around 75-80 km/h, flaps up to about 155 km/h, tucked stoop past 300 km/h,
 pull-outs limited to about 10 g. Easy mode adds strike homing in the last 70 m and a bigger catch radius.
 
 Lift and drag from angle of attack (with stall), induced drag, wing area that shrinks when tucked,
